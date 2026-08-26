@@ -202,10 +202,12 @@ async function buildBudgetAdviceText(monthKey) {
   const sug = buildSuggestion(s.income, expenseCats);
   const lines = [
     `依 50/30/20 法則，本月收入 ${fmt(sug.monthlyIncome)} 的建議分配：`,
-    `必要支出（住房/餐飲/交通/醫療/教育）：建議 ${fmt(sug.recommended.needs)}，實際 ${fmt(
-      sug.actual.needs
-    )}${sug.diff.needs > 0 ? `（超支 ${fmt(sug.diff.needs)}）` : ''}`,
-    `想要支出（娛樂/購物等）：建議 ${fmt(sug.recommended.wants)}，實際 ${fmt(sug.actual.wants)}${
+    `必要支出（餐飲/交通/機車費/稅金/醫療保健/保險/孝親費）：建議 ${fmt(
+      sug.recommended.needs
+    )}，實際 ${fmt(sug.actual.needs)}${
+      sug.diff.needs > 0 ? `（超支 ${fmt(sug.diff.needs)}）` : ''
+    }`,
+    `想要支出（服飾/運動/交際費/捐款等）：建議 ${fmt(sug.recommended.wants)}，實際 ${fmt(sug.actual.wants)}${
       sug.diff.wants > 0 ? `（超支 ${fmt(sug.diff.wants)}）` : ''
     }`,
     `儲蓄／投資：建議 ${fmt(sug.recommended.savings)}，目前結餘 ${fmt(sug.actual.savings)}${
@@ -243,6 +245,10 @@ async function buildAllocationText() {
   return lines.join('\n');
 }
 
+// only these income categories trigger automatic budget top-ups; investment
+// income, refunds, etc. are just recorded without touching allocation plans
+const ALLOCATION_TRIGGER_CATEGORIES = ['薪資', '獎金', '年終'];
+
 const HELP_TEXT = [
   '你可以這樣跟我說：',
   '記帳：「午餐 150」「薪水 45000」「昨天 加油 800」',
@@ -277,7 +283,7 @@ async function handleMessage(text) {
         } else if (status) {
           reply += `\n本月「${intent.category}」預算剩餘 ${fmt(status.remaining)}`;
         }
-      } else {
+      } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(intent.category)) {
         const applied = await applyIncomeAllocation(intent.amount, monthKeyOf(intent.date));
         if (applied.length) {
           reply += '\n已依分配計畫加進當月預算：';

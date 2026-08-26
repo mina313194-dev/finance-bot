@@ -1,11 +1,15 @@
 // 50/30/20 法則：必要支出 50% / 想要支出 30% / 儲蓄與還債 20%
 
-const NEEDS_CATEGORIES = ['住房', '餐飲', '交通', '醫療', '教育'];
-const WANTS_CATEGORIES = ['娛樂', '購物', '其他支出'];
+const NEEDS_CATEGORIES = ['餐飲', '交通', '機車費', '稅金', '醫療保健', '保險', '孝親費'];
+const WANTS_CATEGORIES = ['服飾', '運動', '交際費', '捐款', '其他支出'];
+// 投資 is money moved into savings/investment, not spending — it's excluded from
+// both buckets so it naturally flows into the "savings" figure below instead.
+const SAVINGS_CATEGORIES = ['投資'];
 
 function groupOf(category) {
   if (NEEDS_CATEGORIES.includes(category)) return 'needs';
   if (WANTS_CATEGORIES.includes(category)) return 'wants';
+  if (SAVINGS_CATEGORIES.includes(category)) return 'savings';
   return 'wants';
 }
 
@@ -19,7 +23,7 @@ function buildSuggestion(monthlyIncome, spentByCategory) {
   const actual = { needs: 0, wants: 0 };
   for (const row of spentByCategory) {
     const g = groupOf(row.category);
-    actual[g] += row.total;
+    if (g === 'needs' || g === 'wants') actual[g] += row.total;
   }
   const totalSpent = actual.needs + actual.wants;
   const actualSavings = monthlyIncome - totalSpent;

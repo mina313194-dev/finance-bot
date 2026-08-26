@@ -44,6 +44,11 @@ function extractDate(text) {
   return todayISO(0);
 }
 
+function normalizeMonth(monthStr) {
+  const [y, m] = monthStr.split('-');
+  return `${y}-${m.padStart(2, '0')}`;
+}
+
 function extractAmount(text) {
   let m = text.match(/(\d+(?:\.\d+)?)\s*(?:元|塊|圓)/);
   if (m) return parseFloat(m[1]);
@@ -136,6 +141,23 @@ function parse(rawText) {
 
   if (/分配計畫|查看分配/.test(text)) {
     return { intent: 'query_allocation' };
+  }
+
+  m = text.match(
+    /^設定固定預算\s*(\S+?)\s*(\d+(?:\.\d+)?)\s*(\d{4}-\d{1,2})(?:\s*[至到]?\s*(\d{4}-\d{1,2}))?/
+  );
+  if (m) {
+    return {
+      intent: 'set_recurring_budget',
+      category: m[1],
+      amount: parseFloat(m[2]),
+      startMonth: normalizeMonth(m[3]),
+      endMonth: m[4] ? normalizeMonth(m[4]) : null,
+    };
+  }
+
+  if (/固定預算/.test(text)) {
+    return { intent: 'query_recurring_budget' };
   }
 
   if (/目標進度|查看目標|我的目標/.test(text)) {

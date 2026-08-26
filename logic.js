@@ -83,6 +83,7 @@ async function getBudgets(month) {
 }
 
 async function getBudgetStatus(monthKey) {
+  await ensureRecurringBudgetsApplied(monthKey);
   const budgets = await getBudgets(monthKey);
   const spent = await getExpenseByCategory(monthKey);
   const spentMap = Object.fromEntries(spent.map((r) => [r.category, r.total]));
@@ -129,6 +130,37 @@ async function applyIncomeAllocation(amount, month) {
     applied.push({ category: rule.category, percent: rule.percent, share });
   }
   return applied;
+}
+
+// ---------- recurring fixed budgets ----------
+// for expenses with a known fixed schedule (installments, flat annual premiums
+// smoothed monthly, etc.) rather than a percent-of-income share. A category can
+// have multiple non-overlapping (start_month, end_month) phases, e.g. a higher
+// amount while an installment plan runs, then a lower steady-state amount after.
+
+async function setRecurringBudget(category, amount, startMonth, endMonth) {
+  await db.run(
+    `INSERT INTO recurring_budgets (category, amount, start_month, end_month) VALUES (?, ?, ?, ?)`,
+    [category, amount, startMonth, endMonth || null]
+  );
+}
+
+async function getRecurringBudgets() {
+  return db.all(`SELECT * FROM recurring_budgets ORDER BY category, start_month`);
+}
+
+async function ensureRecurringBudgetsApplied(monthKey) {
+  const rules = await db.all(
+    `SELECT * FROM recurring_budgets WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
+    [monthKey, monthKey]
+  );
+  for (const r of rules) {
+    await db.run(
+      `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)
+       ON CONFLICT(category, month) DO UPDATE SET monthly_limit = excluded.monthly_limit`,
+      [r.category, monthKey, r.amount]
+    );
+  }
 }
 
 // ---------- goals ----------
@@ -193,6 +225,30 @@ async function buildReportText(monthKey) {
   return lines.join('\n');
 }
 
+async function buildWeeklyBudgetReportText() {
+  const monthKey = currentMonthKey();
+  const s = await getMonthSummary(monthKey);
+  const status = await getBudgetStatus(monthKey);
+
+  const lines = [`${monthKey} 本週財務快報`, `本月支出：${fmt(s.expense)}　本月收入：${fmt(s.income)}`];
+
+  if (status.length) {
+    lines.push('', '各項目扣打：');
+    for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
+      const over = b.spent > b.limit;
+      lines.push(
+        `　${b.category}：花了 ${fmt(b.spent)} / 扣打 ${fmt(b.limit)}，剩 ${fmt(b.remaining)}${
+          over ? ' ⚠️超支' : ''
+        }`
+      );
+    }
+  } else {
+    lines.push('', '這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。');
+  }
+
+  return lines.join('\n');
+}
+
 async function buildBudgetAdviceText(monthKey) {
   const s = await getMonthSummary(monthKey);
   if (s.income === 0) {
@@ -245,6 +301,20 @@ async function buildAllocationText() {
   return lines.join('\n');
 }
 
+async function buildRecurringBudgetText() {
+  const rules = await getRecurringBudgets();
+  if (!rules.length) {
+    return '目前沒有設定固定預算。輸入「設定固定預算 保險 2537 2026-03 2027-02」來新增一條。';
+  }
+  const lines = ['目前的固定預算排程：'];
+  for (const r of rules) {
+    lines.push(`　${r.category}：${fmt(r.amount)}/月，${r.start_month} 起${
+      r.end_month ? `到 ${r.end_month} 止` : '（無結束日期）'
+    }`);
+  }
+  return lines.join('\n');
+}
+
 // only these income categories trigger automatic budget top-ups; investment
 // income, refunds, etc. are just recorded without touching allocation plans
 const ALLOCATION_TRIGGER_CATEGORIES = ['薪資', '獎金', '年終'];
@@ -255,9 +325,10 @@ const HELP_TEXT = [
   '設定預算：「設定預算 餐飲 5000」（只套用在這個月）',
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
+  '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -316,6 +387,18 @@ async function handleMessage(text) {
     case 'query_allocation':
       return { reply: await buildAllocationText(), refresh: false };
 
+    case 'set_recurring_budget':
+      await setRecurringBudget(intent.category, intent.amount, intent.startMonth, intent.endMonth);
+      return {
+        reply: `已設定「${intent.category}」固定預算 ${fmt(intent.amount)}/月，從 ${
+          intent.startMonth
+        } 開始${intent.endMonth ? `到 ${intent.endMonth} 結束` : '（無結束日期，持續套用）'}`,
+        refresh: true,
+      };
+
+    case 'query_recurring_budget':
+      return { reply: await buildRecurringBudgetText(), refresh: false };
+
     case 'set_goal':
       await setGoal(intent.name, intent.target, intent.deadline);
       return {
@@ -369,6 +452,9 @@ module.exports = {
   getBudgetStatus,
   getGoals,
   getAllocationRules,
+  getRecurringBudgets,
+  setRecurringBudget,
+  buildWeeklyBudgetReportText,
   currentMonthKey,
   fmt,
 };

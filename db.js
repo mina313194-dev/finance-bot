@@ -82,6 +82,15 @@ async function init() {
       percent REAL NOT NULL
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS recurring_budgets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      amount REAL NOT NULL,
+      start_month TEXT NOT NULL,
+      end_month TEXT
+    )
+  `);
 }
 
 async function run(sql, args = []) {

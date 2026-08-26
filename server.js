@@ -81,6 +81,22 @@ app.get('/api/goals', auth.requireAuth, async (req, res) => {
   res.json(await logic.getGoals());
 });
 
+// ---------- scheduled report (triggered by an external cron, not a logged-in user) ----------
+
+app.post('/api/cron/weekly-report', async (req, res) => {
+  const secret = req.get('X-Cron-Secret');
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const sent = await bot.sendWeeklyReport();
+    res.json({ sent });
+  } catch (err) {
+    console.error('weekly report error:', err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 (async () => {

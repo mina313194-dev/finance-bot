@@ -33,6 +33,15 @@ async function handleText(ctx) {
   }
 }
 
+let botInstance = null;
+
+async function sendWeeklyReport() {
+  if (!botInstance || !ALLOWED_CHAT_ID) return false;
+  const text = await logic.buildWeeklyBudgetReportText();
+  await botInstance.api.sendMessage({ chat_id: ALLOWED_CHAT_ID, text });
+  return true;
+}
+
 function init(app) {
   if (!TOKEN) {
     console.log('TELEGRAM_BOT_TOKEN 未設定，略過 Telegram 機器人啟動。');
@@ -40,6 +49,7 @@ function init(app) {
   }
 
   const bot = new Bot(TOKEN);
+  botInstance = bot;
   bot.command('start', (ctx) => ctx.reply('嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼。'));
   bot.on('message', handleText);
   bot.catch((err) => console.error('Telegram bot 錯誤：', err));
@@ -59,4 +69,4 @@ function init(app) {
   return bot;
 }
 
-module.exports = { init };
+module.exports = { init, sendWeeklyReport };

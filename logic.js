@@ -68,21 +68,22 @@ async function getTrend(months = 6) {
 }
 
 // ---------- budgets ----------
+// budgets are scoped per month: a category's cap only applies to the month it was set/allocated for
 
-async function setBudget(category, limit) {
+async function setBudget(category, limit, month) {
   await db.run(
-    `INSERT INTO budgets (category, monthly_limit) VALUES (?, ?)
-     ON CONFLICT(category) DO UPDATE SET monthly_limit = excluded.monthly_limit`,
-    [category, limit]
+    `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)
+     ON CONFLICT(category, month) DO UPDATE SET monthly_limit = excluded.monthly_limit`,
+    [category, month, limit]
   );
 }
 
-async function getBudgets() {
-  return db.all(`SELECT * FROM budgets ORDER BY category`);
+async function getBudgets(month) {
+  return db.all(`SELECT * FROM budgets WHERE month = ? ORDER BY category`, [month]);
 }
 
 async function getBudgetStatus(monthKey) {
-  const budgets = await getBudgets();
+  const budgets = await getBudgets(monthKey);
   const spent = await getExpenseByCategory(monthKey);
   const spentMap = Object.fromEntries(spent.map((r) => [r.category, r.total]));
   return budgets.map((b) => ({
@@ -91,6 +92,43 @@ async function getBudgetStatus(monthKey) {
     spent: spentMap[b.category] || 0,
     remaining: b.monthly_limit - (spentMap[b.category] || 0),
   }));
+}
+
+// ---------- income allocation plan ----------
+// when income is recorded, each rule's share (percent of that income) is added
+// on top of the category's budget for that month, so multiple incomes in the
+// same month (e.g. salary then a later bonus) stack instead of overwriting.
+
+async function setAllocationRule(category, percent) {
+  await db.run(
+    `INSERT INTO allocation_rules (category, percent) VALUES (?, ?)
+     ON CONFLICT(category) DO UPDATE SET percent = excluded.percent`,
+    [category, percent]
+  );
+}
+
+async function removeAllocationRule(category) {
+  await db.run(`DELETE FROM allocation_rules WHERE category = ?`, [category]);
+}
+
+async function getAllocationRules() {
+  return db.all(`SELECT * FROM allocation_rules ORDER BY category`);
+}
+
+async function applyIncomeAllocation(amount, month) {
+  const rules = await getAllocationRules();
+  const applied = [];
+  for (const rule of rules) {
+    const share = amount * (rule.percent / 100);
+    if (share <= 0) continue;
+    await db.run(
+      `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)
+       ON CONFLICT(category, month) DO UPDATE SET monthly_limit = monthly_limit + excluded.monthly_limit`,
+      [rule.category, month, share]
+    );
+    applied.push({ category: rule.category, percent: rule.percent, share });
+  }
+  return applied;
 }
 
 // ---------- goals ----------
@@ -193,13 +231,27 @@ async function buildGoalsText() {
     .join('\n');
 }
 
+async function buildAllocationText() {
+  const rules = await getAllocationRules();
+  if (!rules.length) {
+    return '目前沒有設定分配計畫。輸入「設定分配 交通 8%」來新增一條，之後薪水／獎金入帳時會自動照比例分配到當月預算。';
+  }
+  const lines = ['目前的分配計畫（收入入帳時自動套用）：'];
+  for (const r of rules) {
+    lines.push(`　${r.category}：${r.percent}%`);
+  }
+  return lines.join('\n');
+}
+
 const HELP_TEXT = [
   '你可以這樣跟我說：',
   '記帳：「午餐 150」「薪水 45000」「昨天 加油 800」',
-  '設定預算：「設定預算 餐飲 5000」',
+  '設定預算：「設定預算 餐飲 5000」（只套用在這個月）',
+  '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
+  '取消分配：「取消分配 交通」',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -225,16 +277,38 @@ async function handleMessage(text) {
         } else if (status) {
           reply += `\n本月「${intent.category}」預算剩餘 ${fmt(status.remaining)}`;
         }
+      } else {
+        const applied = await applyIncomeAllocation(intent.amount, monthKeyOf(intent.date));
+        if (applied.length) {
+          reply += '\n已依分配計畫加進當月預算：';
+          for (const a of applied) {
+            reply += `\n　${a.category} +${fmt(a.share)}（${a.percent}%）`;
+          }
+        }
       }
       return { reply, refresh: true };
     }
 
     case 'set_budget':
-      await setBudget(intent.category, intent.limit);
+      await setBudget(intent.category, intent.limit, monthKey);
       return {
-        reply: `已設定「${intent.category}」每月預算為 ${fmt(intent.limit)}`,
+        reply: `已設定「${intent.category}」本月預算為 ${fmt(intent.limit)}`,
         refresh: true,
       };
+
+    case 'set_allocation':
+      await setAllocationRule(intent.category, intent.percent);
+      return {
+        reply: `已設定分配計畫：「${intent.category}」佔收入的 ${intent.percent}%，之後薪水／獎金入帳會自動加進當月預算`,
+        refresh: true,
+      };
+
+    case 'remove_allocation':
+      await removeAllocationRule(intent.category);
+      return { reply: `已取消「${intent.category}」的分配計畫`, refresh: true };
+
+    case 'query_allocation':
+      return { reply: await buildAllocationText(), refresh: false };
 
     case 'set_goal':
       await setGoal(intent.name, intent.target, intent.deadline);
@@ -288,6 +362,7 @@ module.exports = {
   getBudgets,
   getBudgetStatus,
   getGoals,
+  getAllocationRules,
   currentMonthKey,
   fmt,
 };

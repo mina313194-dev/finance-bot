@@ -47,6 +47,7 @@ function extractAmount(text) {
 
 function matchCategory(text, dict) {
   for (const [category, keywords] of Object.entries(dict)) {
+    if (text.includes(category)) return category;
     for (const kw of keywords) {
       if (text.includes(kw)) return category;
     }
@@ -114,6 +115,20 @@ function parse(rawText) {
   m = text.match(/^存\s*(\d+(?:\.\d+)?)\s*(?:元|塊)?\s*(?:到|給|進)?\s*(\S+)/);
   if (m) {
     return { intent: 'contribute_goal', amount: parseFloat(m[1]), name: m[2] };
+  }
+
+  m = text.match(/^設定分配\s*(\S+?)\s*(\d+(?:\.\d+)?)\s*%/);
+  if (m) {
+    return { intent: 'set_allocation', category: m[1], percent: parseFloat(m[2]) };
+  }
+
+  m = text.match(/^取消分配\s*(\S+)/);
+  if (m) {
+    return { intent: 'remove_allocation', category: m[1] };
+  }
+
+  if (/分配計畫|查看分配/.test(text)) {
+    return { intent: 'query_allocation' };
   }
 
   if (/目標進度|查看目標|我的目標/.test(text)) {

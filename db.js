@@ -10,6 +10,49 @@ const authToken = process.env.TURSO_AUTH_TOKEN;
 
 const client = createClient(authToken ? { url, authToken } : { url });
 
+function currentMonthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+async function migrateBudgetsTable() {
+  const info = await client.execute(`PRAGMA table_info(budgets)`);
+  const columns = info.rows.map((r) => r.name);
+
+  if (columns.length === 0) {
+    await client.execute(`
+      CREATE TABLE budgets (
+        category TEXT NOT NULL,
+        month TEXT NOT NULL,
+        monthly_limit REAL NOT NULL,
+        PRIMARY KEY (category, month)
+      )
+    `);
+    return;
+  }
+
+  if (!columns.includes('month')) {
+    const old = await client.execute(`SELECT * FROM budgets`);
+    await client.execute(`ALTER TABLE budgets RENAME TO budgets_old`);
+    await client.execute(`
+      CREATE TABLE budgets (
+        category TEXT NOT NULL,
+        month TEXT NOT NULL,
+        monthly_limit REAL NOT NULL,
+        PRIMARY KEY (category, month)
+      )
+    `);
+    const thisMonth = currentMonthKey();
+    for (const row of old.rows) {
+      await client.execute({
+        sql: `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)`,
+        args: [row.category, thisMonth, row.monthly_limit],
+      });
+    }
+    await client.execute(`DROP TABLE budgets_old`);
+  }
+}
+
 async function init() {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -22,12 +65,7 @@ async function init() {
       created_at TEXT NOT NULL
     )
   `);
-  await client.execute(`
-    CREATE TABLE IF NOT EXISTS budgets (
-      category TEXT PRIMARY KEY,
-      monthly_limit REAL NOT NULL
-    )
-  `);
+  await migrateBudgetsTable();
   await client.execute(`
     CREATE TABLE IF NOT EXISTS goals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +74,12 @@ async function init() {
       current_amount REAL NOT NULL DEFAULT 0,
       deadline TEXT,
       created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS allocation_rules (
+      category TEXT PRIMARY KEY,
+      percent REAL NOT NULL
     )
   `);
 }

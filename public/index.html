@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>財務規劃儀表板</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1>💰 財務規劃儀表板</h1>
+    <p class="subtitle">記帳請到 Telegram 跟機器人聊天，這裡看即時的財務全貌</p>
+    <div id="userBox" class="user-box" hidden>
+      <span id="userEmail"></span>
+      <button id="logoutBtn">登出</button>
+    </div>
+  </header>
+
+  <section id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h2>請先登入</h2>
+      <p id="loginHint">用你的 Google 帳號登入才能查看資料。</p>
+      <div id="googleBtnContainer"></div>
+      <p id="notConfiguredHint" class="not-configured" hidden>
+        Google 登入尚未設定完成，請參考部署說明設定 GOOGLE_CLIENT_ID 與 ALLOWED_GOOGLE_EMAIL。
+      </p>
+    </div>
+  </section>
+
+  <main class="layout" id="dashboard" hidden>
+    <div class="cards" id="summaryCards">
+      <div class="card income">
+        <span class="label">本月收入</span>
+        <span class="value" id="cardIncome">NT$0</span>
+      </div>
+      <div class="card expense">
+        <span class="label">本月支出</span>
+        <span class="value" id="cardExpense">NT$0</span>
+      </div>
+      <div class="card net">
+        <span class="label">本月結餘</span>
+        <span class="value" id="cardNet">NT$0</span>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h2>支出分類佔比</h2>
+        <canvas id="categoryChart"></canvas>
+        <p class="empty-hint" id="categoryEmptyHint">還沒有支出記錄</p>
+      </div>
+      <div class="panel">
+        <h2>近 6 個月收支趨勢</h2>
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>預算執行狀況</h2>
+      <div id="budgetList" class="budget-list">
+        <p class="empty-hint">還沒有設定預算，到 Telegram 跟機器人說「設定預算 餐飲 5000」試試看</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>儲蓄／投資目標</h2>
+      <div id="goalList" class="goal-list">
+        <p class="empty-hint">還沒有設定目標，到 Telegram 跟機器人說「設定目標 出國基金 50000」試試看</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

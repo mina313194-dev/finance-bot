@@ -1,0 +1,206 @@
+let categoryChart = null;
+let trendChart = null;
+
+const loginScreen = document.getElementById('loginScreen');
+const dashboard = document.getElementById('dashboard');
+const userBox = document.getElementById('userBox');
+const userEmail = document.getElementById('userEmail');
+const notConfiguredHint = document.getElementById('notConfiguredHint');
+const googleBtnContainer = document.getElementById('googleBtnContainer');
+const loginHint = document.getElementById('loginHint');
+
+function fmt(n) {
+  const sign = n < 0 ? '-' : '';
+  return `${sign}NT$${Math.round(Math.abs(n)).toLocaleString()}`;
+}
+
+function showLogin() {
+  loginScreen.hidden = false;
+  dashboard.hidden = true;
+  userBox.hidden = true;
+}
+
+function showDashboard(user) {
+  loginScreen.hidden = true;
+  dashboard.hidden = false;
+  userBox.hidden = false;
+  userEmail.textContent = user.email;
+  loadDashboard();
+}
+
+async function handleCredentialResponse(response) {
+  loginHint.textContent = '登入中…';
+  try {
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: response.credential }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      loginHint.textContent = data.error || '登入失敗，請再試一次。';
+      return;
+    }
+    showDashboard(data);
+  } catch (err) {
+    loginHint.textContent = '登入失敗，請確認網路連線後再試一次。';
+  }
+}
+window.handleCredentialResponse = handleCredentialResponse;
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.reload();
+});
+
+async function init() {
+  const config = await fetch('/api/config').then((r) => r.json());
+
+  if (!config.configured) {
+    notConfiguredHint.hidden = false;
+    loginHint.hidden = true;
+  } else if (window.google) {
+    google.accounts.id.initialize({
+      client_id: config.googleClientId,
+      callback: handleCredentialResponse,
+    });
+    google.accounts.id.renderButton(googleBtnContainer, { theme: 'outline', size: 'large' });
+  }
+
+  const me = await fetch('/api/auth/me');
+  if (me.ok) {
+    const user = await me.json();
+    showDashboard(user);
+  } else {
+    showLogin();
+  }
+}
+
+async function loadDashboard() {
+  const [summaryRes, trendRes, budgetsRes, goalsRes] = await Promise.all([
+    fetch('/api/summary'),
+    fetch('/api/trend'),
+    fetch('/api/budgets'),
+    fetch('/api/goals'),
+  ]);
+
+  if (summaryRes.status === 401) {
+    showLogin();
+    return;
+  }
+
+  const summary = await summaryRes.json();
+  const trend = await trendRes.json();
+  const budgets = await budgetsRes.json();
+  const goals = await goalsRes.json();
+
+  document.getElementById('cardIncome').textContent = fmt(summary.income);
+  document.getElementById('cardExpense').textContent = fmt(summary.expense);
+  document.getElementById('cardNet').textContent = fmt(summary.net);
+
+  renderCategoryChart(summary.byCategory.filter((c) => c.type === 'expense'));
+  renderTrendChart(trend);
+  renderBudgets(budgets);
+  renderGoals(goals);
+}
+
+function renderCategoryChart(expenseCats) {
+  const ctx = document.getElementById('categoryChart');
+  const hint = document.getElementById('categoryEmptyHint');
+  if (!expenseCats.length) {
+    hint.style.display = 'block';
+    ctx.style.display = 'none';
+    return;
+  }
+  hint.style.display = 'none';
+  ctx.style.display = 'block';
+
+  const labels = expenseCats.map((c) => c.category);
+  const values = expenseCats.map((c) => c.total);
+  const colors = ['#4f8cff', '#ff6767', '#ffb648', '#34c77b', '#a97fff', '#3ad4d4', '#ff8ac2'];
+
+  if (categoryChart) categoryChart.destroy();
+  categoryChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }],
+    },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { color: '#e8edf2' } } },
+    },
+  });
+}
+
+function renderTrendChart(trend) {
+  const ctx = document.getElementById('trendChart');
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: trend.map((t) => t.month),
+      datasets: [
+        { label: '收入', data: trend.map((t) => t.income), backgroundColor: '#34c77b' },
+        { label: '支出', data: trend.map((t) => t.expense), backgroundColor: '#ff6767' },
+      ],
+    },
+    options: {
+      plugins: { legend: { labels: { color: '#e8edf2' } } },
+      scales: {
+        x: { ticks: { color: '#93a2b1' }, grid: { color: '#2a3846' } },
+        y: { ticks: { color: '#93a2b1' }, grid: { color: '#2a3846' } },
+      },
+    },
+  });
+}
+
+function renderBudgets(budgets) {
+  const container = document.getElementById('budgetList');
+  if (!budgets.length) {
+    container.innerHTML =
+      '<p class="empty-hint">還沒有設定預算，到 Telegram 跟機器人說「設定預算 餐飲 5000」試試看</p>';
+    return;
+  }
+  container.innerHTML = budgets
+    .map((b) => {
+      const pct = b.limit > 0 ? Math.min(100, (b.spent / b.limit) * 100) : 0;
+      const over = b.spent > b.limit;
+      return `
+        <div class="bar-row">
+          <div class="bar-label">
+            <span>${b.category}</span>
+            <span>${fmt(b.spent)} / ${fmt(b.limit)}</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill${over ? ' over' : ''}" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+    })
+    .join('');
+}
+
+function renderGoals(goals) {
+  const container = document.getElementById('goalList');
+  if (!goals.length) {
+    container.innerHTML =
+      '<p class="empty-hint">還沒有設定目標，到 Telegram 跟機器人說「設定目標 出國基金 50000」試試看</p>';
+    return;
+  }
+  container.innerHTML = goals
+    .map((g) => {
+      const pct = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0;
+      return `
+        <div class="bar-row">
+          <div class="bar-label">
+            <span>${g.name}${g.deadline ? `（期限 ${g.deadline}）` : ''}</span>
+            <span>${fmt(g.current_amount)} / ${fmt(g.target_amount)}</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill goal" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+    })
+    .join('');
+}
+
+init();

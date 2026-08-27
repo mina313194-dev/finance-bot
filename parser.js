@@ -22,6 +22,7 @@ const EXPENSE_CATEGORIES = {
   '捐款': ['捐款', '捐', '樂捐', '公益'],
   '保險': ['保險', '保費', '壽險', '車險'],
   '美容美髮': ['美髮', '剪髮', '燙髮', '染髮', '美容', '做臉', '美甲', 'spa'],
+  '訂閱': ['訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store'],
 };
 
 const ALL_CATEGORIES = [

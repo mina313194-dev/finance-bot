@@ -7,6 +7,12 @@ const WEBHOOK_BASE_URL = process.env.TELEGRAM_WEBHOOK_URL || '';
 const WEBHOOK_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
 const WEBHOOK_PATH = '/api/telegram/webhook';
 
+function dashboardLinkText() {
+  return WEBHOOK_BASE_URL
+    ? `網頁儀表板：${WEBHOOK_BASE_URL.replace(/\/$/, '')}`
+    : '網頁版還沒有正式的公開網址（尚未部署或還在本機測試），部署完成後再問我一次就有連結了。';
+}
+
 async function handleText(ctx) {
   const chatId = ctx.chatId;
   const text = (ctx.message && ctx.message.text ? ctx.message.text : '').trim();
@@ -21,6 +27,11 @@ async function handleText(ctx) {
 
   if (String(chatId) !== String(ALLOWED_CHAT_ID)) {
     await ctx.reply('此機器人為私人使用，未授權存取。');
+    return;
+  }
+
+  if (/^(網頁|儀表板|報表連結|dashboard)$/i.test(text)) {
+    await ctx.reply(dashboardLinkText());
     return;
   }
 
@@ -50,7 +61,11 @@ function init(app) {
 
   const bot = new Bot(TOKEN);
   botInstance = bot;
-  bot.command('start', (ctx) => ctx.reply('嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼。'));
+  bot.command('start', (ctx) =>
+    ctx.reply(
+      `嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼。\n${dashboardLinkText()}`
+    )
+  );
   bot.on('message', handleText);
   bot.catch((err) => console.error('Telegram bot 錯誤：', err));
 

@@ -38,11 +38,19 @@ function todayISO(offsetDays = 0) {
   return d.toISOString().slice(0, 10);
 }
 
+// matches a whole "M/D" or "MM/DD" token (e.g. "8/17"), not a fraction embedded in other text
+const SHORT_DATE_RE = /(?:^|\s)(\d{1,2})\/(\d{1,2})(?=\s|$)/;
+
 function extractDate(text) {
   if (text.includes('前天')) return todayISO(-2);
   if (text.includes('昨天')) return todayISO(-1);
-  const m = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  let m = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = text.match(SHORT_DATE_RE);
+  if (m) {
+    const year = new Date().getFullYear();
+    return `${year}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  }
   return todayISO(0);
 }
 
@@ -52,8 +60,9 @@ function normalizeMonth(monthStr) {
 }
 
 function extractAmount(text) {
-  // strip an explicit YYYY-MM-DD date first so its digits aren't mistaken for the amount
-  const stripped = text.replace(/\d{4}-\d{1,2}-\d{1,2}/, '');
+  // strip any recognized date (full YYYY-MM-DD or short M/D) first so its digits
+  // aren't mistaken for the amount
+  const stripped = text.replace(/\d{4}-\d{1,2}-\d{1,2}/, '').replace(SHORT_DATE_RE, ' ');
   let m = stripped.match(/(\d+(?:\.\d+)?)\s*(?:元|塊|圓)/);
   if (m) return parseFloat(m[1]);
   m = stripped.match(/(\d+(?:\.\d+)?)/);

@@ -154,6 +154,23 @@ function renderTrendChart(trend) {
   });
 }
 
+const BUDGET_GROUP_ORDER = ['needs', 'wants', 'savings'];
+const BUDGET_GROUP_LABEL = { needs: '🏠 必要支出', wants: '🎨 想要支出', savings: '💰 儲蓄投資' };
+
+function accountCard(b) {
+  const pct = b.limit > 0 ? Math.min(100, (b.spent / b.limit) * 100) : 0;
+  const over = b.spent > b.limit;
+  return `
+    <div class="account-card${over ? ' over' : ''}">
+      <div class="account-card-name">${b.category}</div>
+      <div class="account-card-balance">剩 ${fmt(b.remaining)}</div>
+      <div class="bar-track">
+        <div class="bar-fill${over ? ' over' : ''}" style="width:${pct}%"></div>
+      </div>
+      <div class="account-card-detail">花 ${fmt(b.spent)} / 預算 ${fmt(b.limit)}</div>
+    </div>`;
+}
+
 function renderBudgets(budgets) {
   const container = document.getElementById('budgetList');
   if (!budgets.length) {
@@ -161,22 +178,30 @@ function renderBudgets(budgets) {
       '<p class="empty-hint">還沒有設定預算，到 Telegram 跟機器人說「設定預算 餐飲 5000」試試看</p>';
     return;
   }
-  container.innerHTML = budgets
-    .map((b) => {
-      const pct = b.limit > 0 ? Math.min(100, (b.spent / b.limit) * 100) : 0;
-      const over = b.spent > b.limit;
-      return `
-        <div class="bar-row">
-          <div class="bar-label">
-            <span>${b.category}</span>
-            <span>${fmt(b.spent)} / ${fmt(b.limit)}</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill${over ? ' over' : ''}" style="width:${pct}%"></div>
-          </div>
-        </div>`;
-    })
-    .join('');
+
+  container.innerHTML = BUDGET_GROUP_ORDER.map((group) => {
+    const items = budgets.filter((b) => b.group === group);
+    if (!items.length) return '';
+
+    const groupSpent = items.reduce((sum, b) => sum + b.spent, 0);
+    const groupLimit = items.reduce((sum, b) => sum + b.limit, 0);
+    const groupPct = groupLimit > 0 ? Math.min(100, (groupSpent / groupLimit) * 100) : 0;
+    const groupOver = groupSpent > groupLimit;
+
+    return `
+      <div class="budget-group">
+        <div class="budget-group-header">
+          <span class="budget-group-title">${BUDGET_GROUP_LABEL[group]}</span>
+          <span class="budget-group-total">花 ${fmt(groupSpent)} / 預算 ${fmt(groupLimit)}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill${groupOver ? ' over' : ''}" style="width:${groupPct}%"></div>
+        </div>
+        <div class="account-grid">
+          ${items.map(accountCard).join('')}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function renderGoals(goals) {

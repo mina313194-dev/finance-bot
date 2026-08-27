@@ -1,6 +1,6 @@
 const db = require('./db');
 const parser = require('./parser');
-const { buildSuggestion } = require('./budget');
+const { buildSuggestion, groupOf } = require('./budget');
 
 function fmt(n) {
   const sign = n < 0 ? '-' : '';
@@ -89,6 +89,7 @@ async function getBudgetStatus(monthKey) {
   const spentMap = Object.fromEntries(spent.map((r) => [r.category, r.total]));
   return budgets.map((b) => ({
     category: b.category,
+    group: groupOf(b.category),
     limit: b.monthly_limit,
     spent: spentMap[b.category] || 0,
     remaining: b.monthly_limit - (spentMap[b.category] || 0),

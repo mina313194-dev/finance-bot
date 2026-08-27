@@ -120,7 +120,42 @@ body {
 
 .empty-hint { color: var(--text-dim); font-size: 13px; text-align: center; padding: 24px 0; }
 
-.budget-list, .goal-list { display: flex; flex-direction: column; gap: 12px; }
+.budget-list { display: flex; flex-direction: column; gap: 24px; }
+.goal-list { display: flex; flex-direction: column; gap: 12px; }
+
+.budget-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.budget-group-title { font-size: 14px; font-weight: 600; }
+.budget-group-total { font-size: 13px; color: var(--text-dim); }
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.account-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-card.over { border-color: var(--expense); }
+
+.account-card-name { font-size: 13px; color: var(--text-dim); }
+.account-card-balance { font-size: 18px; font-weight: 600; }
+.account-card.over .account-card-balance { color: var(--expense); }
+.account-card-detail { font-size: 12px; color: var(--text-dim); }
 
 .bar-row .bar-label {
   display: flex;

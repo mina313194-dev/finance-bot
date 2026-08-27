@@ -91,6 +91,13 @@ async function init() {
       end_month TEXT
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS recurring_budget_log (
+      rule_id INTEGER NOT NULL,
+      month TEXT NOT NULL,
+      PRIMARY KEY (rule_id, month)
+    )
+  `);
 }
 
 async function run(sql, args = []) {

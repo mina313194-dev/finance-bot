@@ -150,16 +150,29 @@ async function getRecurringBudgets() {
 }
 
 async function ensureRecurringBudgetsApplied(monthKey) {
+  // idempotent + additive: each rule's amount is added to that category's budget
+  // exactly once per month (tracked in recurring_budget_log), so it stacks with
+  // whatever income-allocation has already added instead of overwriting it,
+  // regardless of which one happens to run first in a given month.
   const rules = await db.all(
     `SELECT * FROM recurring_budgets WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
     [monthKey, monthKey]
   );
   for (const r of rules) {
+    const already = await db.get(
+      `SELECT 1 FROM recurring_budget_log WHERE rule_id = ? AND month = ?`,
+      [r.id, monthKey]
+    );
+    if (already) continue;
     await db.run(
       `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)
-       ON CONFLICT(category, month) DO UPDATE SET monthly_limit = excluded.monthly_limit`,
+       ON CONFLICT(category, month) DO UPDATE SET monthly_limit = monthly_limit + excluded.monthly_limit`,
       [r.category, monthKey, r.amount]
     );
+    await db.run(`INSERT INTO recurring_budget_log (rule_id, month) VALUES (?, ?)`, [
+      r.id,
+      monthKey,
+    ]);
   }
 }
 

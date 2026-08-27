@@ -23,6 +23,7 @@ const EXPENSE_CATEGORIES = {
   '保險': ['保險', '保費', '壽險', '車險'],
   '美容美髮': ['美髮', '剪髮', '燙髮', '染髮', '美容', '做臉', '美甲', 'spa'],
   '訂閱': ['訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store'],
+  '電信': ['電信', '手機費', '通話費', '門號', '台新電信', 'sim卡'],
 };
 
 const ALL_CATEGORIES = [

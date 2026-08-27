@@ -164,10 +164,6 @@ function parse(rawText) {
     return { intent: 'query_recurring_budget' };
   }
 
-  if (/預算執行狀況|預算狀況|各項目預算/.test(text)) {
-    return { intent: 'query_budget_status' };
-  }
-
   if (/目標進度|查看目標|我的目標/.test(text)) {
     return { intent: 'query_goals' };
   }

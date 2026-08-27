@@ -264,11 +264,6 @@ function budgetStatusLines(status) {
   return lines;
 }
 
-async function buildBudgetStatusText(monthKey) {
-  const status = await getBudgetStatus(monthKey);
-  return [`${monthKey} 預算執行狀況`, ...budgetStatusLines(status)].join('\n');
-}
-
 async function buildWeeklyBudgetReportText() {
   const monthKey = currentMonthKey();
   const s = await getMonthSummary(monthKey);
@@ -364,7 +359,7 @@ const HELP_TEXT = [
   '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「預算執行狀況」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -434,9 +429,6 @@ async function handleMessage(text) {
 
     case 'query_recurring_budget':
       return { reply: await buildRecurringBudgetText(), refresh: false };
-
-    case 'query_budget_status':
-      return { reply: await buildBudgetStatusText(monthKey), refresh: false };
 
     case 'set_goal':
       await setGoal(intent.name, intent.target, intent.deadline);

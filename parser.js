@@ -50,9 +50,11 @@ function normalizeMonth(monthStr) {
 }
 
 function extractAmount(text) {
-  let m = text.match(/(\d+(?:\.\d+)?)\s*(?:元|塊|圓)/);
+  // strip an explicit YYYY-MM-DD date first so its digits aren't mistaken for the amount
+  const stripped = text.replace(/\d{4}-\d{1,2}-\d{1,2}/, '');
+  let m = stripped.match(/(\d+(?:\.\d+)?)\s*(?:元|塊|圓)/);
   if (m) return parseFloat(m[1]);
-  m = text.match(/(\d+(?:\.\d+)?)/);
+  m = stripped.match(/(\d+(?:\.\d+)?)/);
   if (m) return parseFloat(m[1]);
   return null;
 }

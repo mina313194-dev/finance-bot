@@ -233,11 +233,11 @@ async function buildWeeklyBudgetReportText() {
   const lines = [`${monthKey} 本週財務快報`, `本月支出：${fmt(s.expense)}　本月收入：${fmt(s.income)}`];
 
   if (status.length) {
-    lines.push('', '各項目扣打：');
+    lines.push('', '各項目預算：');
     for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
       const over = b.spent > b.limit;
       lines.push(
-        `　${b.category}：花了 ${fmt(b.spent)} / 扣打 ${fmt(b.limit)}，剩 ${fmt(b.remaining)}${
+        `　${b.category}：花了 ${fmt(b.spent)} / 預算 ${fmt(b.limit)}，剩 ${fmt(b.remaining)}${
           over ? ' ⚠️超支' : ''
         }`
       );

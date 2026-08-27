@@ -96,16 +96,6 @@ body {
 .card.income .value { color: var(--income); }
 .card.expense .value { color: var(--expense); }
 
-.grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-@media (max-width: 700px) {
-  .grid-2 { grid-template-columns: 1fr; }
-}
-
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);

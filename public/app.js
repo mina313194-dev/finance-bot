@@ -180,7 +180,7 @@ function renderBudgets(budgets) {
   }
 
   container.innerHTML = BUDGET_GROUP_ORDER.map((group) => {
-    const items = budgets.filter((b) => b.group === group);
+    const items = budgets.filter((b) => b.group === group).sort((a, b) => b.limit - a.limit);
     if (!items.length) return '';
 
     const groupSpent = items.reduce((sum, b) => sum + b.spent, 0);

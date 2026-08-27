@@ -84,16 +84,33 @@ async function getBudgets(month) {
 
 async function getBudgetStatus(monthKey) {
   await ensureRecurringBudgetsApplied(monthKey);
+  await ensureRolloverApplied(monthKey);
   const budgets = await getBudgets(monthKey);
   const spent = await getExpenseByCategory(monthKey);
   const spentMap = Object.fromEntries(spent.map((r) => [r.category, r.total]));
-  return budgets.map((b) => ({
-    category: b.category,
-    group: groupOf(b.category),
-    limit: b.monthly_limit,
-    spent: spentMap[b.category] || 0,
-    remaining: b.monthly_limit - (spentMap[b.category] || 0),
-  }));
+  const limitMap = Object.fromEntries(budgets.map((b) => [b.category, b.monthly_limit]));
+  const allocationRules = await getAllocationRules();
+
+  // show a category even before it has an actual budget row this month, as long
+  // as it either has an allocation plan (waiting on income) or already has real
+  // spending against it — a category shouldn't disappear just because it's unfunded
+  const categories = new Set([
+    ...budgets.map((b) => b.category),
+    ...spent.map((r) => r.category),
+    ...allocationRules.map((r) => r.category),
+  ]);
+
+  return [...categories].map((category) => {
+    const limit = limitMap[category] || 0;
+    const spentAmt = spentMap[category] || 0;
+    return {
+      category,
+      group: groupOf(category),
+      limit,
+      spent: spentAmt,
+      remaining: limit - spentAmt,
+    };
+  });
 }
 
 // ---------- income allocation plan ----------
@@ -182,6 +199,64 @@ async function ensureRecurringBudgetsApplied(monthKey) {
     });
     await db.run(`INSERT INTO recurring_budget_log (rule_id, month) VALUES (?, ?)`, [
       r.id,
+      monthKey,
+    ]);
+  }
+}
+
+// ---------- rollover categories ----------
+// for irregular-payment categories (taxes, insurance) where an unspent amount
+// should carry forward and keep accumulating rather than resetting each month.
+
+function previousMonthKey(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+async function setRolloverCategory(category) {
+  await db.run(`INSERT INTO rollover_categories (category) VALUES (?) ON CONFLICT DO NOTHING`, [
+    category,
+  ]);
+}
+
+async function removeRolloverCategory(category) {
+  await db.run(`DELETE FROM rollover_categories WHERE category = ?`, [category]);
+}
+
+async function getRolloverCategories() {
+  return db.all(`SELECT * FROM rollover_categories ORDER BY category`);
+}
+
+async function ensureRolloverApplied(monthKey) {
+  // reads the previous month's budget/spend directly (not via getBudgetStatus)
+  // so this never recurses — getBudgetStatus calls this function, so calling it
+  // back would walk every prior month with no lower bound.
+  const categories = await getRolloverCategories();
+  const prevMonth = previousMonthKey(monthKey);
+  for (const c of categories) {
+    const already = await db.get(
+      `SELECT 1 FROM rollover_log WHERE category = ? AND month = ?`,
+      [c.category, monthKey]
+    );
+    if (already) continue;
+    const prevBudgetRow = await db.get(
+      `SELECT monthly_limit FROM budgets WHERE category = ? AND month = ?`,
+      [c.category, prevMonth]
+    );
+    const prevSpentRows = await getExpenseByCategory(prevMonth);
+    const prevSpent = (prevSpentRows.find((r) => r.category === c.category) || {}).total || 0;
+    const prevLimit = prevBudgetRow ? prevBudgetRow.monthly_limit : 0;
+    const leftover = Math.max(0, prevLimit - prevSpent);
+    if (leftover > 0) {
+      await db.run(
+        `INSERT INTO budgets (category, month, monthly_limit) VALUES (?, ?, ?)
+         ON CONFLICT(category, month) DO UPDATE SET monthly_limit = monthly_limit + excluded.monthly_limit`,
+        [c.category, monthKey, leftover]
+      );
+    }
+    await db.run(`INSERT INTO rollover_log (category, month) VALUES (?, ?)`, [
+      c.category,
       monthKey,
     ]);
   }
@@ -347,6 +422,37 @@ async function buildRecurringBudgetText() {
   return lines.join('\n');
 }
 
+async function buildRolloverCategoriesText() {
+  const categories = await getRolloverCategories();
+  if (!categories.length) {
+    return '目前沒有設定累積類別。輸入「設定累積 稅金」讓這個類別沒花完的預算留到下個月繼續累積。';
+  }
+  const lines = ['目前會累積不歸零的類別（沒花完會留到下個月）：'];
+  for (const c of categories) lines.push(`　${c.category}`);
+  return lines.join('\n');
+}
+
+async function buildMonthlySurplusReminderText() {
+  const monthKey = currentMonthKey();
+  const status = await getBudgetStatus(monthKey);
+  const rolloverCats = (await getRolloverCategories()).map((c) => c.category);
+  const surplus = status.filter((b) => !rolloverCats.includes(b.category) && b.remaining > 0);
+
+  if (!surplus.length) {
+    return `${monthKey} 目前沒有可以移去儲蓄的預算結餘。`;
+  }
+
+  surplus.sort((a, b) => b.remaining - a.remaining);
+  const total = surplus.reduce((sum, b) => sum + b.remaining, 0);
+  const lines = [
+    `${monthKey} 預算結餘提醒`,
+    '這些類別這個月還有剩，可以考慮把剩下的錢移去儲蓄：',
+  ];
+  for (const b of surplus) lines.push(`　${b.category}：剩 ${fmt(b.remaining)}`);
+  lines.push(`合計：${fmt(total)}`);
+  return lines.join('\n');
+}
+
 // only these income categories trigger automatic budget top-ups; investment
 // income, refunds, etc. are just recorded without touching allocation plans
 const ALLOCATION_TRIGGER_CATEGORIES = ['薪資', '獎金', '年終'];
@@ -358,9 +464,11 @@ const HELP_TEXT = [
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
   '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
+  '設定累積類別：「設定累積 稅金」（這個類別沒花完的預算會留到下個月，不會歸零）',
+  '取消累積：「取消累積 稅金」',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「累積類別」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -431,6 +539,20 @@ async function handleMessage(text) {
     case 'query_recurring_budget':
       return { reply: await buildRecurringBudgetText(), refresh: false };
 
+    case 'set_rollover_category':
+      await setRolloverCategory(intent.category);
+      return {
+        reply: `已設定「${intent.category}」沒花完的預算會留到下個月繼續累積`,
+        refresh: true,
+      };
+
+    case 'remove_rollover_category':
+      await removeRolloverCategory(intent.category);
+      return { reply: `已取消「${intent.category}」的累積設定，之後每月照常歸零`, refresh: true };
+
+    case 'query_rollover_categories':
+      return { reply: await buildRolloverCategoriesText(), refresh: false };
+
     case 'set_goal':
       await setGoal(intent.name, intent.target, intent.deadline);
       return {
@@ -486,7 +608,10 @@ module.exports = {
   getAllocationRules,
   getRecurringBudgets,
   setRecurringBudget,
+  getRolloverCategories,
+  setRolloverCategory,
   buildWeeklyBudgetReportText,
+  buildMonthlySurplusReminderText,
   currentMonthKey,
   fmt,
 };

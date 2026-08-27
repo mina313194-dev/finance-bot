@@ -1,0 +1,15 @@
+name: Monthly budget surplus reminder
+
+on:
+  schedule:
+    - cron: '0 1 10 * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger monthly surplus reminder
+        run: |
+          curl -fsS -X POST "https://finance-bot-s4a5.onrender.com/api/cron/monthly-surplus-reminder" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"

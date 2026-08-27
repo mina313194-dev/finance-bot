@@ -160,6 +160,20 @@ function parse(rawText) {
     };
   }
 
+  m = text.match(/^設定累積\s*(\S+)/);
+  if (m) {
+    return { intent: 'set_rollover_category', category: m[1] };
+  }
+
+  m = text.match(/^取消累積\s*(\S+)/);
+  if (m) {
+    return { intent: 'remove_rollover_category', category: m[1] };
+  }
+
+  if (/累積類別|查看累積/.test(text)) {
+    return { intent: 'query_rollover_categories' };
+  }
+
   if (/固定預算/.test(text)) {
     return { intent: 'query_recurring_budget' };
   }

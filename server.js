@@ -97,6 +97,20 @@ app.post('/api/cron/weekly-report', async (req, res) => {
   }
 });
 
+app.post('/api/cron/monthly-surplus-reminder', async (req, res) => {
+  const secret = req.get('X-Cron-Secret');
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const sent = await bot.sendMonthlySurplusReminder();
+    res.json({ sent });
+  } catch (err) {
+    console.error('monthly surplus reminder error:', err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 (async () => {

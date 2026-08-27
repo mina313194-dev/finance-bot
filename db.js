@@ -98,6 +98,18 @@ async function init() {
       PRIMARY KEY (rule_id, month)
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS rollover_categories (
+      category TEXT PRIMARY KEY
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS rollover_log (
+      category TEXT NOT NULL,
+      month TEXT NOT NULL,
+      PRIMARY KEY (category, month)
+    )
+  `);
 }
 
 async function run(sql, args = []) {

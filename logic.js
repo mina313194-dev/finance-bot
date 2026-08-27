@@ -248,6 +248,27 @@ async function buildReportText(monthKey) {
   return lines.join('\n');
 }
 
+function budgetStatusLines(status) {
+  if (!status.length) {
+    return ['這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。'];
+  }
+  const lines = [];
+  for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
+    const over = b.spent > b.limit;
+    lines.push(
+      `　${b.category}：花了 ${fmt(b.spent)} / 預算 ${fmt(b.limit)}，剩 ${fmt(b.remaining)}${
+        over ? ' ⚠️超支' : ''
+      }`
+    );
+  }
+  return lines;
+}
+
+async function buildBudgetStatusText(monthKey) {
+  const status = await getBudgetStatus(monthKey);
+  return [`${monthKey} 預算執行狀況`, ...budgetStatusLines(status)].join('\n');
+}
+
 async function buildWeeklyBudgetReportText() {
   const monthKey = currentMonthKey();
   const s = await getMonthSummary(monthKey);
@@ -256,15 +277,7 @@ async function buildWeeklyBudgetReportText() {
   const lines = [`${monthKey} 本週財務快報`, `本月支出：${fmt(s.expense)}　本月收入：${fmt(s.income)}`];
 
   if (status.length) {
-    lines.push('', '各項目預算：');
-    for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
-      const over = b.spent > b.limit;
-      lines.push(
-        `　${b.category}：花了 ${fmt(b.spent)} / 預算 ${fmt(b.limit)}，剩 ${fmt(b.remaining)}${
-          over ? ' ⚠️超支' : ''
-        }`
-      );
-    }
+    lines.push('', '各項目預算：', ...budgetStatusLines(status));
   } else {
     lines.push('', '這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。');
   }
@@ -351,7 +364,7 @@ const HELP_TEXT = [
   '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「預算執行狀況」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -421,6 +434,9 @@ async function handleMessage(text) {
 
     case 'query_recurring_budget':
       return { reply: await buildRecurringBudgetText(), refresh: false };
+
+    case 'query_budget_status':
+      return { reply: await buildBudgetStatusText(monthKey), refresh: false };
 
     case 'set_goal':
       await setGoal(intent.name, intent.target, intent.deadline);

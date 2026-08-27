@@ -153,7 +153,10 @@ async function ensureRecurringBudgetsApplied(monthKey) {
   // idempotent + additive: each rule's amount is added to that category's budget
   // exactly once per month (tracked in recurring_budget_log), so it stacks with
   // whatever income-allocation has already added instead of overwriting it,
-  // regardless of which one happens to run first in a given month.
+  // regardless of which one happens to run first in a given month. It also
+  // auto-records an estimated transaction for the same amount, so "spent" is
+  // already accurate before the real statement shows up — reconcile it later
+  // by editing/removing the estimated transaction against the actual bill.
   const rules = await db.all(
     `SELECT * FROM recurring_budgets WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
     [monthKey, monthKey]
@@ -169,6 +172,13 @@ async function ensureRecurringBudgetsApplied(monthKey) {
        ON CONFLICT(category, month) DO UPDATE SET monthly_limit = monthly_limit + excluded.monthly_limit`,
       [r.category, monthKey, r.amount]
     );
+    await insertTransaction({
+      date: `${monthKey}-01`,
+      type: 'expense',
+      category: r.category,
+      amount: r.amount,
+      note: `固定預算自動入帳（待核對實際帳單）`,
+    });
     await db.run(`INSERT INTO recurring_budget_log (rule_id, month) VALUES (?, ?)`, [
       r.id,
       monthKey,

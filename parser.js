@@ -160,6 +160,23 @@ function parse(rawText) {
     };
   }
 
+  m = text.match(
+    /^設定固定收入\s*(\S+?)\s*(\d+(?:\.\d+)?)\s*(\d{4}-\d{1,2})(?:\s*[至到]?\s*(\d{4}-\d{1,2}))?/
+  );
+  if (m) {
+    return {
+      intent: 'set_recurring_income',
+      category: m[1],
+      amount: parseFloat(m[2]),
+      startMonth: normalizeMonth(m[3]),
+      endMonth: m[4] ? normalizeMonth(m[4]) : null,
+    };
+  }
+
+  if (/固定收入/.test(text)) {
+    return { intent: 'query_recurring_income' };
+  }
+
   m = text.match(/^設定累積\s*(\S+)/);
   if (m) {
     return { intent: 'set_rollover_category', category: m[1] };

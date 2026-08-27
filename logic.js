@@ -83,6 +83,7 @@ async function getBudgets(month) {
 }
 
 async function getBudgetStatus(monthKey) {
+  await ensureRecurringIncomeApplied(monthKey);
   await ensureRecurringBudgetsApplied(monthKey);
   await ensureRolloverApplied(monthKey);
   const budgets = await getBudgets(monthKey);
@@ -148,6 +149,50 @@ async function applyIncomeAllocation(amount, month) {
     applied.push({ category: rule.category, percent: rule.percent, share });
   }
   return applied;
+}
+
+// ---------- recurring fixed income ----------
+// for a steady paycheck: auto-records the income transaction each month and,
+// if the category is one that triggers allocation (薪資/獎金/年終), applies the
+// allocation plan too — same idempotent-once-per-month pattern as everything else.
+
+async function setRecurringIncome(category, amount, startMonth, endMonth) {
+  await db.run(
+    `INSERT INTO recurring_income (category, amount, start_month, end_month) VALUES (?, ?, ?, ?)`,
+    [category, amount, startMonth, endMonth || null]
+  );
+}
+
+async function getRecurringIncome() {
+  return db.all(`SELECT * FROM recurring_income ORDER BY category, start_month`);
+}
+
+async function ensureRecurringIncomeApplied(monthKey) {
+  const rules = await db.all(
+    `SELECT * FROM recurring_income WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
+    [monthKey, monthKey]
+  );
+  for (const r of rules) {
+    const already = await db.get(
+      `SELECT 1 FROM recurring_income_log WHERE rule_id = ? AND month = ?`,
+      [r.id, monthKey]
+    );
+    if (already) continue;
+    await insertTransaction({
+      date: `${monthKey}-01`,
+      type: 'income',
+      category: r.category,
+      amount: r.amount,
+      note: '固定薪資自動入帳',
+    });
+    if (ALLOCATION_TRIGGER_CATEGORIES.includes(r.category)) {
+      await applyIncomeAllocation(r.amount, monthKey);
+    }
+    await db.run(`INSERT INTO recurring_income_log (rule_id, month) VALUES (?, ?)`, [
+      r.id,
+      monthKey,
+    ]);
+  }
 }
 
 // ---------- recurring fixed budgets ----------
@@ -422,6 +467,20 @@ async function buildRecurringBudgetText() {
   return lines.join('\n');
 }
 
+async function buildRecurringIncomeText() {
+  const rules = await getRecurringIncome();
+  if (!rules.length) {
+    return '目前沒有設定固定收入。輸入「設定固定收入 薪資 45000 2026-09」來新增一條。';
+  }
+  const lines = ['目前的固定收入排程：'];
+  for (const r of rules) {
+    lines.push(`　${r.category}：${fmt(r.amount)}/月，${r.start_month} 起${
+      r.end_month ? `到 ${r.end_month} 止` : '（無結束日期）'
+    }`);
+  }
+  return lines.join('\n');
+}
+
 async function buildRolloverCategoriesText() {
   const categories = await getRolloverCategories();
   if (!categories.length) {
@@ -464,11 +523,12 @@ const HELP_TEXT = [
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
   '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
+  '設定固定收入：「設定固定收入 薪資 45000 2026-09」（每月自動入帳，薪資/獎金/年終會自動觸發分配）',
   '設定累積類別：「設定累積 稅金」（這個類別沒花完的預算會留到下個月，不會歸零）',
   '取消累積：「取消累積 稅金」',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「累積類別」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -526,6 +586,22 @@ async function handleMessage(text) {
 
     case 'query_allocation':
       return { reply: await buildAllocationText(), refresh: false };
+
+    case 'set_recurring_income':
+      await setRecurringIncome(intent.category, intent.amount, intent.startMonth, intent.endMonth);
+      return {
+        reply: `已設定「${intent.category}」固定收入 ${fmt(intent.amount)}/月，從 ${
+          intent.startMonth
+        } 開始${
+          intent.endMonth ? `到 ${intent.endMonth} 結束` : '（無結束日期，持續套用）'
+        }，之後每月會自動入帳${
+          ALLOCATION_TRIGGER_CATEGORIES.includes(intent.category) ? '並觸發分配' : ''
+        }`,
+        refresh: true,
+      };
+
+    case 'query_recurring_income':
+      return { reply: await buildRecurringIncomeText(), refresh: false };
 
     case 'set_recurring_budget':
       await setRecurringBudget(intent.category, intent.amount, intent.startMonth, intent.endMonth);
@@ -608,6 +684,8 @@ module.exports = {
   getAllocationRules,
   getRecurringBudgets,
   setRecurringBudget,
+  getRecurringIncome,
+  setRecurringIncome,
   getRolloverCategories,
   setRolloverCategory,
   buildWeeklyBudgetReportText,

@@ -110,6 +110,22 @@ async function init() {
       PRIMARY KEY (category, month)
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS recurring_income (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      amount REAL NOT NULL,
+      start_month TEXT NOT NULL,
+      end_month TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS recurring_income_log (
+      rule_id INTEGER NOT NULL,
+      month TEXT NOT NULL,
+      PRIMARY KEY (rule_id, month)
+    )
+  `);
 }
 
 async function run(sql, args = []) {

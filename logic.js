@@ -452,15 +452,15 @@ async function weeklyBudgetLines(status) {
   const weeklySpend = await weeklyCategorySpend();
   const rolloverCats = (await getRolloverCategories()).map((c) => c.category);
 
-  const lines = [];
+  const lines = ['（本週花｜本月預算剩）'];
   for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
     const thisWeek = weeklySpend[b.category] || 0;
     const over = b.spent > b.limit;
     const canSave = !over && !rolloverCats.includes(b.category) && thisWeek === 0 && b.remaining > 0;
     lines.push(
-      `　${b.category}：本週花 ${fmt(thisWeek)}｜本月預算剩 ${fmt(b.remaining)}${
-        over ? ' ⚠️超支' : ''
-      }${canSave ? ' 💰可轉存' : ''}`
+      `　${b.category}：${fmt(thisWeek)}｜${fmt(b.remaining)}${over ? ' ⚠️超支' : ''}${
+        canSave ? ' 💰可轉存' : ''
+      }`
     );
   }
   return lines;

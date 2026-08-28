@@ -50,6 +50,26 @@ async function getMonthSummary(monthKey) {
   return { month: monthKey, income, expense, net: income - expense, byCategory: byCategoryList };
 }
 
+async function setCardDueDate(card, dueDay) {
+  await db.run(
+    `INSERT INTO card_due_dates (card, due_day) VALUES (?, ?)
+     ON CONFLICT(card) DO UPDATE SET due_day = excluded.due_day`,
+    [card, dueDay]
+  );
+}
+
+async function getCardDueDates() {
+  return db.all(`SELECT * FROM card_due_dates`);
+}
+
+function daysUntilDue(dueDay) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let due = new Date(today.getFullYear(), today.getMonth(), dueDay);
+  if (due < today) due = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
+  return Math.round((due - today) / (1000 * 60 * 60 * 24));
+}
+
 async function getCardSummary(monthKey) {
   const rows = await getMonthTransactions(monthKey);
   const byCard = {};
@@ -58,9 +78,19 @@ async function getCardSummary(monthKey) {
     const card = r.card || '未分類卡別';
     byCard[card] = (byCard[card] || 0) + r.amount;
   }
-  return Object.entries(byCard)
-    .map(([card, total]) => ({ card, total }))
-    .sort((a, b) => b.total - a.total);
+  const dueDates = await getCardDueDates();
+  const dueMap = Object.fromEntries(dueDates.map((d) => [d.card, d.due_day]));
+
+  const list = Object.entries(byCard).map(([card, total]) => {
+    const dueDay = dueMap[card] ?? null;
+    return { card, total, dueDay, daysUntil: dueDay != null ? daysUntilDue(dueDay) : null };
+  });
+  return list.sort((a, b) => {
+    if (a.daysUntil == null && b.daysUntil == null) return b.total - a.total;
+    if (a.daysUntil == null) return 1;
+    if (b.daysUntil == null) return -1;
+    return a.daysUntil - b.daysUntil;
+  });
 }
 
 async function getExpenseByCategory(monthKey) {
@@ -413,13 +443,22 @@ async function buildWeeklyBudgetReportText() {
 
   const cardSummary = await getCardSummary(monthKey);
   if (cardSummary.length) {
-    lines.push('', '各卡片本月刷卡金額（該轉多少錢過去繳費）：');
-    for (const c of cardSummary) {
-      lines.push(`　${c.card}：${fmt(c.total)}`);
-    }
+    lines.push('', '各卡片本月刷卡金額（該轉多少錢過去繳費）：', ...cardSummaryLines(cardSummary));
   }
 
   return lines.join('\n');
+}
+
+function cardSummaryLines(cardSummary) {
+  return cardSummary.map((c) => {
+    const dueText =
+      c.daysUntil == null
+        ? ''
+        : c.daysUntil === 0
+        ? '　今天要繳！'
+        : `　繳款日 ${c.dueDay} 號，還有 ${c.daysUntil} 天`;
+    return `　${c.card}：${fmt(c.total)}${dueText}`;
+  });
 }
 
 async function buildCardSummaryText(monthKey) {
@@ -427,9 +466,7 @@ async function buildCardSummaryText(monthKey) {
   if (!cardSummary.length) {
     return `${monthKey} 目前還沒有任何有標記卡別的支出紀錄。`;
   }
-  const lines = [`${monthKey} 各卡片刷卡金額：`];
-  for (const c of cardSummary) lines.push(`　${c.card}：${fmt(c.total)}`);
-  return lines.join('\n');
+  return [`${monthKey} 各卡片刷卡金額：`, ...cardSummaryLines(cardSummary)].join('\n');
 }
 
 async function buildBudgetAdviceText(monthKey) {
@@ -557,6 +594,7 @@ const HELP_TEXT = [
   '設定固定收入：「設定固定收入 薪資 45000 2026-09」（每月自動入帳，薪資/獎金/年終會自動觸發分配）',
   '設定累積類別：「設定累積 稅金」（這個類別沒花完的預算會留到下個月，不會歸零）',
   '取消累積：「取消累積 稅金」',
+  '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
   '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」',
@@ -698,6 +736,10 @@ async function handleMessage(text) {
     case 'query_card_summary':
       return { reply: await buildCardSummaryText(monthKey), refresh: false };
 
+    case 'set_card_due_date':
+      await setCardDueDate(intent.card, intent.dueDay);
+      return { reply: `已設定「${intent.card}」的繳款日為每月 ${intent.dueDay} 號`, refresh: true };
+
     default:
       return {
         reply:
@@ -712,6 +754,9 @@ module.exports = {
   getMonthSummary,
   getExpenseByCategory,
   getCardSummary,
+  setCardDueDate,
+  getCardDueDates,
+  buildCardSummaryText,
   getTrend,
   getBudgets,
   getBudgetStatus,

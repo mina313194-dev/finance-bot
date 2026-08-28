@@ -213,6 +213,11 @@ function parse(rawText) {
     return { intent: 'query_budget_suggestion' };
   }
 
+  m = text.match(/^設定繳款日\s*(\S+?)\s*(\d{1,2})/);
+  if (m) {
+    return { intent: 'set_card_due_date', card: m[1], dueDay: parseInt(m[2], 10) };
+  }
+
   if (/各卡|卡片明細|卡片刷卡|刷卡金額/.test(text)) {
     return { intent: 'query_card_summary' };
   }

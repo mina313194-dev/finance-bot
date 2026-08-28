@@ -136,6 +136,12 @@ async function init() {
       PRIMARY KEY (rule_id, month)
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS card_due_dates (
+      card TEXT PRIMARY KEY,
+      due_day INTEGER NOT NULL
+    )
+  `);
 }
 
 async function run(sql, args = []) {

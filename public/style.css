@@ -129,6 +129,8 @@ body {
 
 .card-summary-name { font-size: 14px; }
 .card-summary-amount { font-size: 15px; font-weight: 600; }
+.card-summary-due { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.card-summary-due.soon { color: var(--expense); }
 
 .budget-group-header {
   display: flex;

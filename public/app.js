@@ -255,13 +255,22 @@ function renderCardSummary(cards) {
     return;
   }
   container.innerHTML = cards
-    .map(
-      (c) => `
+    .map((c) => {
+      const due =
+        c.daysUntil == null
+          ? ''
+          : c.daysUntil === 0
+          ? '今天要繳！'
+          : `繳款日 ${c.dueDay} 號・還有 ${c.daysUntil} 天`;
+      return `
       <div class="card-summary-row">
-        <span class="card-summary-name">${c.card}</span>
+        <div>
+          <span class="card-summary-name">${c.card}</span>
+          ${due ? `<div class="card-summary-due${c.daysUntil <= 3 ? ' soon' : ''}">${due}</div>` : ''}
+        </div>
         <span class="card-summary-amount">${fmt(c.total)}</span>
-      </div>`
-    )
+      </div>`;
+    })
     .join('');
 }
 

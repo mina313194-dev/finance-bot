@@ -77,11 +77,12 @@ async function init() {
 }
 
 async function loadDashboard() {
-  const [summaryRes, trendRes, budgetsRes, goalsRes] = await Promise.all([
+  const [summaryRes, trendRes, budgetsRes, goalsRes, cardsRes] = await Promise.all([
     fetch('/api/summary'),
     fetch('/api/trend'),
     fetch('/api/budgets'),
     fetch('/api/goals'),
+    fetch('/api/cards'),
   ]);
 
   if (summaryRes.status === 401) {
@@ -93,6 +94,7 @@ async function loadDashboard() {
   const trend = await trendRes.json();
   const budgets = await budgetsRes.json();
   const goals = await goalsRes.json();
+  const cards = await cardsRes.json();
 
   document.getElementById('cardIncome').textContent = fmt(summary.income);
   document.getElementById('cardExpense').textContent = fmt(summary.expense);
@@ -102,6 +104,7 @@ async function loadDashboard() {
   renderTrendChart(trend);
   renderBudgets(budgets);
   renderGoals(goals);
+  renderCardSummary(cards);
 }
 
 const BASE_PALETTE = [
@@ -242,6 +245,23 @@ function renderGoals(goals) {
           </div>
         </div>`;
     })
+    .join('');
+}
+
+function renderCardSummary(cards) {
+  const container = document.getElementById('cardList');
+  if (!cards.length) {
+    container.innerHTML = '<p class="empty-hint">這個月還沒有標記卡別的支出紀錄</p>';
+    return;
+  }
+  container.innerHTML = cards
+    .map(
+      (c) => `
+      <div class="card-summary-row">
+        <span class="card-summary-name">${c.card}</span>
+        <span class="card-summary-amount">${fmt(c.total)}</span>
+      </div>`
+    )
     .join('');
 }
 

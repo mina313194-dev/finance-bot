@@ -53,6 +53,14 @@ async function migrateBudgetsTable() {
   }
 }
 
+async function migrateTransactionsTable() {
+  const info = await client.execute(`PRAGMA table_info(transactions)`);
+  const columns = info.rows.map((r) => r.name);
+  if (columns.length && !columns.includes('card')) {
+    await client.execute(`ALTER TABLE transactions ADD COLUMN card TEXT`);
+  }
+}
+
 async function init() {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -62,9 +70,11 @@ async function init() {
       category TEXT NOT NULL,
       amount REAL NOT NULL,
       note TEXT,
+      card TEXT,
       created_at TEXT NOT NULL
     )
   `);
+  await migrateTransactionsTable();
   await migrateBudgetsTable();
   await client.execute(`
     CREATE TABLE IF NOT EXISTS goals (

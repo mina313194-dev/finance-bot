@@ -81,6 +81,11 @@ app.get('/api/goals', auth.requireAuth, async (req, res) => {
   res.json(await logic.getGoals());
 });
 
+app.get('/api/cards', auth.requireAuth, async (req, res) => {
+  const month = req.query.month || logic.currentMonthKey();
+  res.json(await logic.getCardSummary(month));
+});
+
 // ---------- scheduled report (triggered by an external cron, not a logged-in user) ----------
 
 app.post('/api/cron/weekly-report', async (req, res) => {

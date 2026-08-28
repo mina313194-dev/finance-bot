@@ -213,6 +213,10 @@ function parse(rawText) {
     return { intent: 'query_budget_suggestion' };
   }
 
+  if (/各卡|卡片明細|卡片刷卡|刷卡金額/.test(text)) {
+    return { intent: 'query_card_summary' };
+  }
+
   if (/月報|報告|報表|總結|花費統計|這個月/.test(text) && !extractAmount(text)) {
     return { intent: 'query_report' };
   }

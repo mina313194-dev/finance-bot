@@ -17,11 +17,11 @@ function nowISO() {
 
 // ---------- transactions ----------
 
-async function insertTransaction({ date, type, category, amount, note }) {
+async function insertTransaction({ date, type, category, amount, note, card }) {
   await db.run(
-    `INSERT INTO transactions (date, type, category, amount, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [date, type, category, amount, note || null, nowISO()]
+    `INSERT INTO transactions (date, type, category, amount, note, card, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [date, type, category, amount, note || null, card || null, nowISO()]
   );
 }
 
@@ -48,6 +48,19 @@ async function getMonthSummary(monthKey) {
     return { type, category, total };
   });
   return { month: monthKey, income, expense, net: income - expense, byCategory: byCategoryList };
+}
+
+async function getCardSummary(monthKey) {
+  const rows = await getMonthTransactions(monthKey);
+  const byCard = {};
+  for (const r of rows) {
+    if (r.type !== 'expense') continue;
+    const card = r.card || '未分類卡別';
+    byCard[card] = (byCard[card] || 0) + r.amount;
+  }
+  return Object.entries(byCard)
+    .map(([card, total]) => ({ card, total }))
+    .sort((a, b) => b.total - a.total);
 }
 
 async function getExpenseByCategory(monthKey) {
@@ -398,6 +411,24 @@ async function buildWeeklyBudgetReportText() {
     lines.push('', '這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。');
   }
 
+  const cardSummary = await getCardSummary(monthKey);
+  if (cardSummary.length) {
+    lines.push('', '各卡片本月刷卡金額（該轉多少錢過去繳費）：');
+    for (const c of cardSummary) {
+      lines.push(`　${c.card}：${fmt(c.total)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+async function buildCardSummaryText(monthKey) {
+  const cardSummary = await getCardSummary(monthKey);
+  if (!cardSummary.length) {
+    return `${monthKey} 目前還沒有任何有標記卡別的支出紀錄。`;
+  }
+  const lines = [`${monthKey} 各卡片刷卡金額：`];
+  for (const c of cardSummary) lines.push(`　${c.card}：${fmt(c.total)}`);
   return lines.join('\n');
 }
 
@@ -528,7 +559,7 @@ const HELP_TEXT = [
   '取消累積：「取消累積 稅金」',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -664,6 +695,9 @@ async function handleMessage(text) {
     case 'query_report':
       return { reply: await buildReportText(monthKey), refresh: false };
 
+    case 'query_card_summary':
+      return { reply: await buildCardSummaryText(monthKey), refresh: false };
+
     default:
       return {
         reply:
@@ -677,6 +711,7 @@ module.exports = {
   handleMessage,
   getMonthSummary,
   getExpenseByCategory,
+  getCardSummary,
   getTrend,
   getBudgets,
   getBudgetStatus,

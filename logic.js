@@ -82,6 +82,7 @@ async function getCardSummary(monthKey) {
   const byCard = {};
   for (const r of rows) {
     if (r.type !== 'expense') continue;
+    if (r.card === '現金') continue; // already paid at the time of purchase, nothing to reserve
     const card = r.card || '未分類卡別';
     byCard[card] = (byCard[card] || 0) + r.amount;
   }
@@ -469,9 +470,11 @@ async function buildWeeklyBudgetReportText() {
 
   lines.push('', '各項目本週花費／本月預算：', ...(await weeklyBudgetLines(status)));
 
-  const cardSummary = await getCardSummary(monthKey);
-  if (cardSummary.length) {
-    lines.push('', '各卡片本月刷卡金額（該轉多少錢過去繳費）：', ...cardSummaryLines(cardSummary));
+  const dueSoon = (await getCardSummary(monthKey)).filter(
+    (c) => c.daysUntil != null && c.daysUntil <= 7
+  );
+  if (dueSoon.length) {
+    lines.push('', '本週內要繳款的卡片：', ...cardSummaryLines(dueSoon));
   }
 
   lines.push('', await buildTransferPlanText());

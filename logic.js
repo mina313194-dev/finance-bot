@@ -450,18 +450,12 @@ async function weeklyBudgetLines(status) {
     return ['這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。'];
   }
   const weeklySpend = await weeklyCategorySpend();
-  const rolloverCats = (await getRolloverCategories()).map((c) => c.category);
 
   const lines = ['（本週花｜本月預算剩）'];
   for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
     const thisWeek = weeklySpend[b.category] || 0;
     const over = b.spent > b.limit;
-    const canSave = !over && !rolloverCats.includes(b.category) && thisWeek === 0 && b.remaining > 0;
-    lines.push(
-      `　${b.category}：${fmt(thisWeek)}｜${fmt(b.remaining)}${over ? ' ⚠️超支' : ''}${
-        canSave ? ' 💰可轉存' : ''
-      }`
-    );
+    lines.push(`　${b.category}：${fmt(thisWeek)}｜${fmt(b.remaining)}${over ? ' ⚠️超支' : ''}`);
   }
   return lines;
 }

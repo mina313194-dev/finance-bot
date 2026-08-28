@@ -2,7 +2,7 @@ name: Monthly budget surplus reminder
 
 on:
   schedule:
-    - cron: '0 1 10 * *'
+    - cron: '17 1 10 * *'
   workflow_dispatch: {}
 
 jobs:

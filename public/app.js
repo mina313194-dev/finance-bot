@@ -104,6 +104,23 @@ async function loadDashboard() {
   renderGoals(goals);
 }
 
+const BASE_PALETTE = [
+  '#4f8cff', '#ff6767', '#ffb648', '#34c77b', '#a97fff', '#3ad4d4', '#ff8ac2',
+  '#ffe066', '#6f42c1', '#20c997', '#fd7e14', '#e83e8c', '#17a2b8', '#84cc16',
+  '#f06595', '#748ffc',
+];
+
+function paletteFor(count) {
+  if (count <= BASE_PALETTE.length) return BASE_PALETTE.slice(0, count);
+  // beyond the curated set, generate additional distinct hues so colors never repeat
+  const colors = [...BASE_PALETTE];
+  for (let i = BASE_PALETTE.length; i < count; i++) {
+    const hue = (i * 137.508) % 360; // golden-angle spacing keeps neighbors distinct
+    colors.push(`hsl(${hue.toFixed(0)}, 65%, 60%)`);
+  }
+  return colors;
+}
+
 function renderCategoryChart(expenseCats) {
   const ctx = document.getElementById('categoryChart');
   const hint = document.getElementById('categoryEmptyHint');
@@ -117,7 +134,7 @@ function renderCategoryChart(expenseCats) {
 
   const labels = expenseCats.map((c) => c.category);
   const values = expenseCats.map((c) => c.total);
-  const colors = ['#4f8cff', '#ff6767', '#ffb648', '#34c77b', '#a97fff', '#3ad4d4', '#ff8ac2'];
+  const colors = paletteFor(expenseCats.length);
 
   if (categoryChart) categoryChart.destroy();
   categoryChart = new Chart(ctx, {

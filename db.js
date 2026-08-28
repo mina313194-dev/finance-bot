@@ -126,9 +126,17 @@ async function init() {
       category TEXT NOT NULL,
       amount REAL NOT NULL,
       start_month TEXT NOT NULL,
-      end_month TEXT
+      end_month TEXT,
+      pay_day INTEGER NOT NULL DEFAULT 1
     )
   `);
+  {
+    const info = await client.execute(`PRAGMA table_info(recurring_income)`);
+    const columns = info.rows.map((r) => r.name);
+    if (columns.length && !columns.includes('pay_day')) {
+      await client.execute(`ALTER TABLE recurring_income ADD COLUMN pay_day INTEGER NOT NULL DEFAULT 1`);
+    }
+  }
   await client.execute(`
     CREATE TABLE IF NOT EXISTS recurring_income_log (
       rule_id INTEGER NOT NULL,

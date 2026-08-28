@@ -187,6 +187,11 @@ function parse(rawText) {
     return { intent: 'query_recurring_income' };
   }
 
+  m = text.match(/^設定入帳日\s*(\S+?)\s*(\d{1,2})/);
+  if (m) {
+    return { intent: 'set_income_pay_day', category: m[1], payDay: parseInt(m[2], 10) };
+  }
+
   m = text.match(/^設定累積\s*(\S+)/);
   if (m) {
     return { intent: 'set_rollover_category', category: m[1] };

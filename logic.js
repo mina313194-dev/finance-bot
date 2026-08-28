@@ -82,7 +82,6 @@ async function getCardSummary(monthKey) {
   const byCard = {};
   for (const r of rows) {
     if (r.type !== 'expense') continue;
-    if (r.card === '現金') continue; // already paid at the time of purchase, nothing to reserve
     const card = r.card || '未分類卡別';
     byCard[card] = (byCard[card] || 0) + r.amount;
   }
@@ -218,6 +217,10 @@ async function getRecurringIncome() {
   return db.all(`SELECT * FROM recurring_income ORDER BY category, start_month`);
 }
 
+async function setRecurringIncomePayDay(category, payDay) {
+  await db.run(`UPDATE recurring_income SET pay_day = ? WHERE category = ?`, [payDay, category]);
+}
+
 async function ensureRecurringIncomeApplied(monthKey) {
   const rules = await db.all(
     `SELECT * FROM recurring_income WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
@@ -230,7 +233,7 @@ async function ensureRecurringIncomeApplied(monthKey) {
     );
     if (already) continue;
     await insertTransaction({
-      date: `${monthKey}-01`,
+      date: `${monthKey}-${String(r.pay_day || 1).padStart(2, '0')}`,
       type: 'income',
       category: r.category,
       amount: r.amount,
@@ -736,6 +739,10 @@ async function handleMessage(text) {
     case 'query_recurring_income':
       return { reply: await buildRecurringIncomeText(), refresh: false };
 
+    case 'set_income_pay_day':
+      await setRecurringIncomePayDay(intent.category, intent.payDay);
+      return { reply: `已設定「${intent.category}」的入帳日為每月 ${intent.payDay} 號`, refresh: true };
+
     case 'set_recurring_budget':
       await setRecurringBudget(intent.category, intent.amount, intent.startMonth, intent.endMonth);
       return {
@@ -834,6 +841,7 @@ module.exports = {
   setRecurringBudget,
   getRecurringIncome,
   setRecurringIncome,
+  setRecurringIncomePayDay,
   getRolloverCategories,
   setRolloverCategory,
   buildWeeklyBudgetReportText,

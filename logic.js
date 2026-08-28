@@ -32,6 +32,13 @@ async function getMonthTransactions(monthKey) {
   );
 }
 
+async function getRecentTransactions(days) {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceStr = since.toISOString().slice(0, 10);
+  return db.all(`SELECT * FROM transactions WHERE date >= ? ORDER BY date`, [sinceStr]);
+}
+
 async function getMonthSummary(monthKey) {
   const rows = await getMonthTransactions(monthKey);
   let income = 0;
@@ -446,6 +453,8 @@ async function buildWeeklyBudgetReportText() {
     lines.push('', '各卡片本月刷卡金額（該轉多少錢過去繳費）：', ...cardSummaryLines(cardSummary));
   }
 
+  lines.push('', await buildTransferPlanText());
+
   return lines.join('\n');
 }
 
@@ -467,6 +476,37 @@ async function buildCardSummaryText(monthKey) {
     return `${monthKey} 目前還沒有任何有標記卡別的支出紀錄。`;
   }
   return [`${monthKey} 各卡片刷卡金額：`, ...cardSummaryLines(cardSummary)].join('\n');
+}
+
+async function buildTransferPlanText() {
+  const rows = await getRecentTransactions(7);
+  const rolloverCats = (await getRolloverCategories()).map((c) => c.category);
+  const rules = await getAllocationRules();
+
+  let cardTotal = 0;
+  let investAmount = 0;
+  let savingsAmount = 0;
+
+  for (const r of rows) {
+    if (r.type === 'expense' && r.card && r.card !== '現金') {
+      cardTotal += r.amount;
+    }
+    if (r.type === 'income' && ALLOCATION_TRIGGER_CATEGORIES.includes(r.category)) {
+      for (const rule of rules) {
+        const share = r.amount * (rule.percent / 100);
+        if (rule.category === '投資') investAmount += share;
+        else if (rolloverCats.includes(rule.category)) savingsAmount += share;
+      }
+    }
+  }
+
+  const lines = [
+    '近 7 天轉帳建議：',
+    `　連線 → 華南（付卡費）：${fmt(cardTotal)}`,
+    `　連線 → 永豐（投資）：${fmt(investAmount)}`,
+    `　連線 → 土地（儲蓄）：${fmt(savingsAmount)}`,
+  ];
+  return lines.join('\n');
 }
 
 async function buildBudgetAdviceText(monthKey) {
@@ -597,7 +637,7 @@ const HELP_TEXT = [
   '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
-  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」',
+  '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」「轉帳建議」',
 ].join('\n');
 
 async function handleMessage(text) {
@@ -736,6 +776,9 @@ async function handleMessage(text) {
     case 'query_card_summary':
       return { reply: await buildCardSummaryText(monthKey), refresh: false };
 
+    case 'query_transfer_plan':
+      return { reply: await buildTransferPlanText(), refresh: false };
+
     case 'set_card_due_date':
       await setCardDueDate(intent.card, intent.dueDay);
       return { reply: `已設定「${intent.card}」的繳款日為每月 ${intent.dueDay} 號`, refresh: true };
@@ -757,6 +800,7 @@ module.exports = {
   setCardDueDate,
   getCardDueDates,
   buildCardSummaryText,
+  buildTransferPlanText,
   getTrend,
   getBudgets,
   getBudgetStatus,

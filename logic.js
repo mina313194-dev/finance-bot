@@ -435,6 +435,37 @@ function budgetStatusLines(status) {
   return lines;
 }
 
+async function weeklyCategorySpend() {
+  const rows = await getRecentTransactions(7);
+  const byCategory = {};
+  for (const r of rows) {
+    if (r.type !== 'expense') continue;
+    byCategory[r.category] = (byCategory[r.category] || 0) + r.amount;
+  }
+  return byCategory;
+}
+
+async function weeklyBudgetLines(status) {
+  if (!status.length) {
+    return ['這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。'];
+  }
+  const weeklySpend = await weeklyCategorySpend();
+  const rolloverCats = (await getRolloverCategories()).map((c) => c.category);
+
+  const lines = [];
+  for (const b of status.sort((a, b2) => b2.spent - a.spent)) {
+    const thisWeek = weeklySpend[b.category] || 0;
+    const over = b.spent > b.limit;
+    const canSave = !over && !rolloverCats.includes(b.category) && thisWeek === 0 && b.remaining > 0;
+    lines.push(
+      `　${b.category}：本週花 ${fmt(thisWeek)}｜本月預算剩 ${fmt(b.remaining)}${
+        over ? ' ⚠️超支' : ''
+      }${canSave ? ' 💰可轉存' : ''}`
+    );
+  }
+  return lines;
+}
+
 async function buildWeeklyBudgetReportText() {
   const monthKey = currentMonthKey();
   const s = await getMonthSummary(monthKey);
@@ -442,11 +473,7 @@ async function buildWeeklyBudgetReportText() {
 
   const lines = [`${monthKey} 本週財務快報`, `本月支出：${fmt(s.expense)}　本月收入：${fmt(s.income)}`];
 
-  if (status.length) {
-    lines.push('', '各項目預算：', ...budgetStatusLines(status));
-  } else {
-    lines.push('', '這個月還沒有任何預算額度（尚未收到薪水或還沒設定固定預算）。');
-  }
+  lines.push('', '各項目本週花費／本月預算：', ...(await weeklyBudgetLines(status)));
 
   const cardSummary = await getCardSummary(monthKey);
   if (cardSummary.length) {

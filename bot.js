@@ -81,6 +81,13 @@ function chunk(arr, size) {
   return rows;
 }
 
+// appends the trailing row(s): "其他" + "取消" side by side when there's a
+// "more" option to expand, otherwise just "取消" alone
+function addMoreAndCancel(builder, moreCallbackData) {
+  if (moreCallbackData) builder.text('▶️ 其他', moreCallbackData);
+  builder.text('❌ 取消', 'flow:cancel').row();
+}
+
 const FAVORITE_CATEGORIES = ['餐飲', '美容美髮', '服飾'];
 
 function categoryKeyboard(showAll = false) {
@@ -91,19 +98,23 @@ function categoryKeyboard(showAll = false) {
     for (const cat of row) builder.text(`${CATEGORY_EMOJI[cat] || '📦'} ${cat}`, `cat:${cat}`);
     builder.row();
   }
-  if (!showAll) builder.text('▶️ 其他', 'cat:more').row();
-  builder.text('❌ 取消', 'flow:cancel').row();
+  addMoreAndCancel(builder, !showAll && 'cat:more');
   return builder.build();
 }
 
-function incomeCategoryKeyboard() {
-  const categories = Object.keys(parser.INCOME_CATEGORIES);
+const FAVORITE_INCOME_CATEGORIES = ['薪資', '投資收益'];
+
+function incomeCategoryKeyboard(showAll = false) {
+  const all = Object.keys(parser.INCOME_CATEGORIES);
+  const categories = showAll
+    ? all.filter((c) => !FAVORITE_INCOME_CATEGORIES.includes(c))
+    : FAVORITE_INCOME_CATEGORIES;
   const builder = new InlineKeyboardBuilder();
   for (const row of chunk(categories, 3)) {
     for (const cat of row) builder.text(`${INCOME_EMOJI[cat] || '💰'} ${cat}`, `inc:${cat}`);
     builder.row();
   }
-  builder.text('❌ 取消', 'flow:cancel').row();
+  addMoreAndCancel(builder, !showAll && 'inc:more');
   return builder.build();
 }
 
@@ -117,8 +128,7 @@ function cardKeyboard(showAll = false) {
     for (const card of row) builder.text(`${CARD_EMOJI[card] || '💳'} ${card}`, `card:${card}`);
     builder.row();
   }
-  if (!showAll) builder.text('▶️ 其他', 'card:more').row();
-  builder.text('❌ 取消', 'flow:cancel').row();
+  addMoreAndCancel(builder, !showAll && 'card:more');
   return builder.build();
 }
 
@@ -370,6 +380,17 @@ async function handleCallbackQuery(ctx) {
       chat_id: chatId,
       message_id: ctx.callbackQuery.message.message_id,
       text: `類別：${flow.category}　付款：${card}\n請輸入金額（例如 150），或輸入「取消」放棄`,
+    });
+    return;
+  }
+
+  if (data === 'inc:more') {
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: '選擇收入類別：',
+      reply_markup: incomeCategoryKeyboard(true),
     });
     return;
   }

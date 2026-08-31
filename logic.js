@@ -25,6 +25,32 @@ async function insertTransaction({ date, type, category, amount, note, card }) {
   );
 }
 
+// shared by the free-text parser and the Telegram button flow: records the
+// transaction and returns the confirmation text (budget status for an
+// expense, or the allocation breakdown for a salary/bonus/year-end income)
+async function recordTransaction({ date, type, category, amount, note, card }) {
+  await insertTransaction({ date, type, category, amount, note, card });
+  let reply = `已記錄${type === 'income' ? '收入' : '支出'}：${category} ${fmt(amount)}`;
+  if (type === 'expense') {
+    const statusList = await getBudgetStatus(monthKeyOf(date));
+    const status = statusList.find((b) => b.category === category);
+    if (status && status.spent > status.limit) {
+      reply += `\n⚠️ 本月「${category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(status.spent)}`;
+    } else if (status) {
+      reply += `\n本月「${category}」預算剩餘 ${fmt(status.remaining)}`;
+    }
+  } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(category)) {
+    const applied = await applyIncomeAllocation(amount, monthKeyOf(date));
+    if (applied.length) {
+      reply += '\n已依分配計畫加進當月預算：';
+      for (const a of applied) {
+        reply += `\n　${a.category} +${fmt(a.share)}（${a.percent}%）`;
+      }
+    }
+  }
+  return reply;
+}
+
 async function getMonthTransactions(monthKey) {
   return db.all(
     `SELECT * FROM transactions WHERE substr(date,1,7) = ? ORDER BY date DESC, id DESC`,
@@ -655,6 +681,7 @@ const HELP_TEXT = [
   '你可以這樣跟我說：',
   '記帳：「午餐 150」「薪水 45000」「昨天 加油 800」',
   '記帳並標記卡別：「永豐 午餐 150」（開頭放銀行名稱，會記到那張卡）',
+  '按鈕記帳（Telegram）：輸入「記帳」，依序點選類別／付款方式／輸入金額',
   '設定預算：「設定預算 餐飲 5000」（只套用在這個月）',
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
@@ -676,32 +703,8 @@ async function handleMessage(text) {
     case 'help':
       return { reply: HELP_TEXT, refresh: false };
 
-    case 'record_transaction': {
-      await insertTransaction(intent);
-      let reply = `已記錄${intent.type === 'income' ? '收入' : '支出'}：${intent.category} ${fmt(
-        intent.amount
-      )}`;
-      if (intent.type === 'expense') {
-        const statusList = await getBudgetStatus(monthKeyOf(intent.date));
-        const status = statusList.find((b) => b.category === intent.category);
-        if (status && status.spent > status.limit) {
-          reply += `\n⚠️ 本月「${intent.category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(
-            status.spent
-          )}`;
-        } else if (status) {
-          reply += `\n本月「${intent.category}」預算剩餘 ${fmt(status.remaining)}`;
-        }
-      } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(intent.category)) {
-        const applied = await applyIncomeAllocation(intent.amount, monthKeyOf(intent.date));
-        if (applied.length) {
-          reply += '\n已依分配計畫加進當月預算：';
-          for (const a of applied) {
-            reply += `\n　${a.category} +${fmt(a.share)}（${a.percent}%）`;
-          }
-        }
-      }
-      return { reply, refresh: true };
-    }
+    case 'record_transaction':
+      return { reply: await recordTransaction(intent), refresh: true };
 
     case 'set_budget':
       await setBudget(intent.category, intent.limit, monthKey);
@@ -826,6 +829,7 @@ async function handleMessage(text) {
 
 module.exports = {
   handleMessage,
+  recordTransaction,
   getMonthSummary,
   getExpenseByCategory,
   getCardSummary,

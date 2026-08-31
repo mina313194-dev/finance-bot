@@ -65,6 +65,49 @@ async function getRecentTransactions(days) {
   return db.all(`SELECT * FROM transactions WHERE date >= ? ORDER BY date`, [sinceStr]);
 }
 
+async function getTransactionsInRange(startDate, endDate) {
+  return db.all(`SELECT * FROM transactions WHERE date >= ? AND date <= ? ORDER BY date, id`, [
+    startDate,
+    endDate,
+  ]);
+}
+
+async function buildRangeAmountText(startDate, endDate, label) {
+  const rows = await getTransactionsInRange(startDate, endDate);
+  let income = 0;
+  let expense = 0;
+  const byCategory = {};
+  for (const r of rows) {
+    if (r.type === 'income') {
+      income += r.amount;
+    } else {
+      expense += r.amount;
+      byCategory[r.category] = (byCategory[r.category] || 0) + r.amount;
+    }
+  }
+  const lines = [
+    `🔍 查詢結果\n期間：${label}`,
+    `收入：${fmt(income)}　支出：${fmt(expense)}　結餘：${fmt(income - expense)}`,
+  ];
+  const cats = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  if (cats.length) {
+    lines.push('', '支出分類：');
+    for (const [cat, total] of cats) lines.push(`　${cat}：${fmt(total)}`);
+  }
+  return lines.join('\n');
+}
+
+async function buildRangeDetailText(startDate, endDate, label) {
+  const rows = await getTransactionsInRange(startDate, endDate);
+  if (!rows.length) return `🔍 查詢結果\n期間：${label}\n\n這段期間沒有任何紀錄。`;
+  const lines = [`🔍 查詢結果\n期間：${label}`, ''];
+  for (const r of rows) {
+    const sign = r.type === 'income' ? '+' : '-';
+    lines.push(`${r.date}　${r.category}　${sign}${fmt(r.amount)}${r.card ? `（${r.card}）` : ''}`);
+  }
+  return lines.join('\n');
+}
+
 async function getMonthSummary(monthKey) {
   const rows = await getMonthTransactions(monthKey);
   let income = 0;
@@ -682,6 +725,7 @@ const HELP_TEXT = [
   '記帳：「午餐 150」「薪水 45000」「昨天 加油 800」',
   '記帳並標記卡別：「永豐 午餐 150」（開頭放銀行名稱，會記到那張卡）',
   '按鈕記帳（Telegram）：輸入「記帳」，依序點選類別／付款方式／輸入金額',
+  '按鈕查詢（Telegram）：輸入「查詢」，打日期區間（例如 0501-0519 或單日 0519），再選查金額或查明細',
   '設定預算：「設定預算 餐飲 5000」（只套用在這個月）',
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
@@ -830,6 +874,8 @@ async function handleMessage(text) {
 module.exports = {
   handleMessage,
   recordTransaction,
+  buildRangeAmountText,
+  buildRangeDetailText,
   getMonthSummary,
   getExpenseByCategory,
   getCardSummary,

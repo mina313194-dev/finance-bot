@@ -68,6 +68,56 @@ function cardKeyboard() {
   return builder.build();
 }
 
+function queryTypeKeyboard() {
+  return new InlineKeyboardBuilder()
+    .text('💰 查金額', 'qtype:amount')
+    .text('📋 消費明細', 'qtype:detail')
+    .row()
+    .text('❌ 取消', 'qtype:cancel')
+    .build();
+}
+
+function queryFollowUpKeyboard(showDetailButton) {
+  const builder = new InlineKeyboardBuilder();
+  if (showDetailButton) builder.text('📋 查明細', 'qtype:detail');
+  builder
+    .text('➕ 繼續記帳', 'follow:record')
+    .row()
+    .text('🔍 再查詢', 'follow:query')
+    .text('✅ 結束', 'follow:end');
+  return builder.build();
+}
+
+// accepts "MMDD-MMDD" (range) or a single "MMDD" (that one day), current year assumed
+function parseQueryDateInput(text) {
+  const year = new Date().getFullYear();
+  const toDate = (mmdd) => `${year}-${mmdd.slice(0, 2)}-${mmdd.slice(2, 4)}`;
+  const toLabel = (mmdd) => `${parseInt(mmdd.slice(0, 2), 10)}/${mmdd.slice(2, 4)}`;
+
+  let m = text.match(/(\d{4})-(\d{4})/);
+  if (m) {
+    const [, s, e] = m;
+    return {
+      start: toDate(s),
+      end: toDate(e),
+      label: s === e ? toLabel(s) : `${toLabel(s)}-${toLabel(e)}`,
+    };
+  }
+  m = text.match(/(?<!\d)(\d{4})(?!\d)/);
+  if (m) {
+    const d = m[1];
+    return { start: toDate(d), end: toDate(d), label: toLabel(d) };
+  }
+  return null;
+}
+
+function defaultQueryRangeHint() {
+  const now = new Date();
+  const monthStart = `${String(now.getMonth() + 1).padStart(2, '0')}01`;
+  const today = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  return `請輸入查詢區間：\n\n區間：${monthStart}-${today}\n單日請輸入四碼，例如：${today}`;
+}
+
 function dashboardLinkText() {
   return WEBHOOK_BASE_URL
     ? `網頁儀表板：${WEBHOOK_BASE_URL.replace(/\/$/, '')}`
@@ -125,9 +175,31 @@ async function handleText(ctx) {
     return;
   }
 
+  if (flow && flow.step === 'query_date') {
+    if (text === '取消') {
+      flowState.delete(chatId);
+      await ctx.reply('已取消查詢。');
+      return;
+    }
+    const range = parseQueryDateInput(text);
+    if (!range) {
+      await ctx.reply('❌ 格式錯誤！請依格式輸入，例如：0501-0519 或單日 0519');
+      return;
+    }
+    flowState.set(chatId, { step: 'query_type', ...range });
+    await ctx.reply(`期間：${range.label}\n請選擇查詢方式`, { reply_markup: queryTypeKeyboard() });
+    return;
+  }
+
   if (text === '記帳') {
     flowState.set(chatId, { step: 'category' });
     await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
+    return;
+  }
+
+  if (text === '查詢') {
+    flowState.set(chatId, { step: 'query_date' });
+    await ctx.reply(defaultQueryRangeHint());
     return;
   }
 
@@ -182,6 +254,53 @@ async function handleCallbackQuery(ctx) {
       message_id: ctx.callbackQuery.message.message_id,
       text: `類別：${flow.category}　付款：${card}\n請輸入金額（例如 150），或輸入「取消」放棄`,
     });
+    return;
+  }
+
+  if (data.startsWith('qtype:')) {
+    const queryType = data.slice(6);
+    const flow = flowState.get(chatId);
+
+    if (queryType === 'cancel') {
+      flowState.delete(chatId);
+      await ctx.answerCallbackQuery({});
+      await ctx.api.editMessageText({
+        chat_id: chatId,
+        message_id: ctx.callbackQuery.message.message_id,
+        text: '已取消查詢。',
+      });
+      return;
+    }
+
+    if (!flow || !flow.start) {
+      await ctx.answerCallbackQuery({ text: '請重新輸入「查詢」開始' });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({});
+    const text =
+      queryType === 'detail'
+        ? await logic.buildRangeDetailText(flow.start, flow.end, flow.label)
+        : await logic.buildRangeAmountText(flow.start, flow.end, flow.label);
+    // keep the range around so "🔍再查詢" restarts and "📋查明細" can reuse it
+    flowState.set(chatId, { step: 'query_type', start: flow.start, end: flow.end, label: flow.label });
+    await ctx.reply(text, { reply_markup: queryFollowUpKeyboard(queryType !== 'detail') });
+    return;
+  }
+
+  if (data.startsWith('follow:')) {
+    const action = data.slice(7);
+    await ctx.answerCallbackQuery({});
+    if (action === 'record') {
+      flowState.set(chatId, { step: 'category' });
+      await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
+    } else if (action === 'query') {
+      flowState.set(chatId, { step: 'query_date' });
+      await ctx.reply(defaultQueryRangeHint());
+    } else {
+      flowState.delete(chatId);
+      await ctx.reply('好的，查詢結束 👋');
+    }
     return;
   }
 

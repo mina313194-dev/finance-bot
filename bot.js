@@ -72,7 +72,7 @@ function chunk(arr, size) {
   return rows;
 }
 
-const FAVORITE_CATEGORIES = ['餐飲', '運動', '美容美髮', '服飾'];
+const FAVORITE_CATEGORIES = ['餐飲', '美容美髮', '服飾'];
 
 function categoryKeyboard(showAll = false) {
   const all = Object.keys(parser.EXPENSE_CATEGORIES);
@@ -98,12 +98,11 @@ function incomeCategoryKeyboard() {
   return builder.build();
 }
 
-const FAVORITE_CARDS = ['永豐', '玉山', '現金'];
+const FAVORITE_CARDS = ['永豐', '玉山'];
 
 function cardKeyboard(showAll = false) {
-  const cards = showAll
-    ? parser.KNOWN_CARDS.filter((c) => !FAVORITE_CARDS.includes(c))
-    : FAVORITE_CARDS;
+  const rest = parser.KNOWN_CARDS.filter((c) => !FAVORITE_CARDS.includes(c) && c !== '現金');
+  const cards = showAll ? ['現金', ...rest] : FAVORITE_CARDS;
   const builder = new InlineKeyboardBuilder();
   for (const row of chunk(cards, 3)) {
     for (const card of row) builder.text(`${CARD_EMOJI[card] || '💳'} ${card}`, `card:${card}`);

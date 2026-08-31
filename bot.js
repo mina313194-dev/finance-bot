@@ -72,13 +72,17 @@ function chunk(arr, size) {
   return rows;
 }
 
-function categoryKeyboard() {
-  const categories = Object.keys(parser.EXPENSE_CATEGORIES);
+const FAVORITE_CATEGORIES = ['餐飲', '運動', '美容美髮', '服飾'];
+
+function categoryKeyboard(showAll = false) {
+  const all = Object.keys(parser.EXPENSE_CATEGORIES);
+  const categories = showAll ? all.filter((c) => !FAVORITE_CATEGORIES.includes(c)) : FAVORITE_CATEGORIES;
   const builder = new InlineKeyboardBuilder();
   for (const row of chunk(categories, 3)) {
     for (const cat of row) builder.text(`${CATEGORY_EMOJI[cat] || '📦'} ${cat}`, `cat:${cat}`);
     builder.row();
   }
+  if (!showAll) builder.text('▶️ 其他', 'cat:more').row();
   return builder.build();
 }
 
@@ -265,6 +269,17 @@ async function handleCallbackQuery(ctx) {
 
   if (!isAuthorized(chatId)) {
     await ctx.answerCallbackQuery({ text: '未授權' });
+    return;
+  }
+
+  if (data === 'cat:more') {
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: '選擇消費類別：',
+      reply_markup: categoryKeyboard(true),
+    });
     return;
   }
 

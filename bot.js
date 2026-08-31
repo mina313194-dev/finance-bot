@@ -96,12 +96,18 @@ function incomeCategoryKeyboard() {
   return builder.build();
 }
 
-function cardKeyboard() {
+const FAVORITE_CARDS = ['永豐', '玉山', '現金'];
+
+function cardKeyboard(showAll = false) {
+  const cards = showAll
+    ? parser.KNOWN_CARDS.filter((c) => !FAVORITE_CARDS.includes(c))
+    : FAVORITE_CARDS;
   const builder = new InlineKeyboardBuilder();
-  for (const row of chunk(parser.KNOWN_CARDS, 3)) {
+  for (const row of chunk(cards, 3)) {
     for (const card of row) builder.text(`${CARD_EMOJI[card] || '💳'} ${card}`, `card:${card}`);
     builder.row();
   }
+  if (!showAll) builder.text('▶️ 其他', 'card:more').row();
   return builder.build();
 }
 
@@ -292,6 +298,22 @@ async function handleCallbackQuery(ctx) {
       message_id: ctx.callbackQuery.message.message_id,
       text: `類別：${category}\n選擇付款方式：`,
       reply_markup: cardKeyboard(),
+    });
+    return;
+  }
+
+  if (data === 'card:more') {
+    const flow = flowState.get(chatId);
+    if (!flow || flow.step !== 'card') {
+      await ctx.answerCallbackQuery({ text: '請重新輸入「記帳」開始' });
+      return;
+    }
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: `類別：${flow.category}\n選擇付款方式：`,
+      reply_markup: cardKeyboard(true),
     });
     return;
   }

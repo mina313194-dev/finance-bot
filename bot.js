@@ -83,6 +83,7 @@ function categoryKeyboard(showAll = false) {
     builder.row();
   }
   if (!showAll) builder.text('▶️ 其他', 'cat:more').row();
+  builder.text('❌ 取消', 'flow:cancel').row();
   return builder.build();
 }
 
@@ -93,6 +94,7 @@ function incomeCategoryKeyboard() {
     for (const cat of row) builder.text(`${INCOME_EMOJI[cat] || '💰'} ${cat}`, `inc:${cat}`);
     builder.row();
   }
+  builder.text('❌ 取消', 'flow:cancel').row();
   return builder.build();
 }
 
@@ -108,6 +110,7 @@ function cardKeyboard(showAll = false) {
     builder.row();
   }
   if (!showAll) builder.text('▶️ 其他', 'card:more').row();
+  builder.text('❌ 取消', 'flow:cancel').row();
   return builder.build();
 }
 
@@ -189,12 +192,17 @@ async function handleText(ctx) {
   }
 
   const flow = flowState.get(chatId);
+
+  // "取消" works at every step, not just the text-input ones (amount /
+  // query_date) - category/card steps wait on a button tap, so without this
+  // typing 取消 there just fell through to "看不懂" and left the flow stuck
+  if (flow && text === '取消') {
+    flowState.delete(chatId);
+    await ctx.reply('已取消。', { reply_markup: mainMenuKeyboard() });
+    return;
+  }
+
   if (flow && flow.step === 'amount') {
-    if (text === '取消') {
-      flowState.delete(chatId);
-      await ctx.reply(flow.type === 'income' ? '已取消記錄收入。' : '已取消記帳。');
-      return;
-    }
     const amount = parseFloat(text.replace(/[,，元塊]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) {
       await ctx.reply('請直接輸入金額數字（例如 150），或輸入「取消」放棄。');
@@ -220,11 +228,6 @@ async function handleText(ctx) {
   }
 
   if (flow && flow.step === 'query_date') {
-    if (text === '取消') {
-      flowState.delete(chatId);
-      await ctx.reply('已取消查詢。');
-      return;
-    }
     const range = parseQueryDateInput(text);
     if (!range) {
       await ctx.reply('❌ 格式錯誤！請依格式輸入，例如：0501-0519 或單日 0519');
@@ -375,6 +378,17 @@ async function handleCallbackQuery(ctx) {
     // keep the range around so "🔍再查詢" restarts and "📋查明細" can reuse it
     flowState.set(chatId, { step: 'query_type', start: flow.start, end: flow.end, label: flow.label });
     await ctx.reply(text, { reply_markup: queryFollowUpKeyboard(queryType !== 'detail') });
+    return;
+  }
+
+  if (data === 'flow:cancel') {
+    flowState.delete(chatId);
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: '已取消。',
+    });
     return;
   }
 

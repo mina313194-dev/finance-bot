@@ -55,11 +55,20 @@ const INCOME_EMOJI = {
 function mainMenuKeyboard() {
   return new ReplyKeyboardBuilder()
     .text('記帳')
-    .text('收入')
-    .row()
     .text('查詢')
+    .row()
     .text('說明')
+    .text('報表')
     .build({ resize_keyboard: true });
+}
+
+function recordSubmenuKeyboard() {
+  return new InlineKeyboardBuilder()
+    .text('💸 支出', 'sub:expense')
+    .text('💰 收入', 'sub:income')
+    .row()
+    .text('❌ 取消', 'flow:cancel')
+    .build();
 }
 
 // per-chat guided-entry state (in-memory - fine for a single-user bot; a
@@ -238,20 +247,24 @@ async function handleText(ctx) {
   }
 
   if (text === '記帳') {
-    flowState.set(chatId, { step: 'category', type: 'expense' });
-    await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
-    return;
-  }
-
-  if (text === '收入') {
-    flowState.set(chatId, { step: 'category', type: 'income' });
-    await ctx.reply('選擇收入類別：', { reply_markup: incomeCategoryKeyboard() });
+    await ctx.reply('要記支出還是收入？', { reply_markup: recordSubmenuKeyboard() });
     return;
   }
 
   if (text === '查詢') {
     flowState.set(chatId, { step: 'query_date' });
     await ctx.reply(defaultQueryRangeHint());
+    return;
+  }
+
+  if (text === '報表') {
+    try {
+      const result = await logic.handleMessage('這個月報告');
+      await ctx.reply(result.reply);
+    } catch (err) {
+      console.error('Telegram 報表 error:', err);
+      await ctx.reply('產生報表時發生錯誤，請稍後再試一次。');
+    }
     return;
   }
 
@@ -277,6 +290,30 @@ async function handleCallbackQuery(ctx) {
 
   if (!isAuthorized(chatId)) {
     await ctx.answerCallbackQuery({ text: '未授權' });
+    return;
+  }
+
+  if (data === 'sub:expense') {
+    flowState.set(chatId, { step: 'category', type: 'expense' });
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: '選擇消費類別：',
+      reply_markup: categoryKeyboard(),
+    });
+    return;
+  }
+
+  if (data === 'sub:income') {
+    flowState.set(chatId, { step: 'category', type: 'income' });
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: '選擇收入類別：',
+      reply_markup: incomeCategoryKeyboard(),
+    });
     return;
   }
 
@@ -395,8 +432,7 @@ async function handleCallbackQuery(ctx) {
     const action = data.slice(7);
     await ctx.answerCallbackQuery({});
     if (action === 'record') {
-      flowState.set(chatId, { step: 'category', type: 'expense' });
-      await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
+      await ctx.reply('要記支出還是收入？', { reply_markup: recordSubmenuKeyboard() });
     } else if (action === 'query') {
       flowState.set(chatId, { step: 'query_date' });
       await ctx.reply(defaultQueryRangeHint());
@@ -436,7 +472,7 @@ function init(app) {
   botInstance = bot;
   bot.command('start', (ctx) =>
     ctx.reply(
-      `嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼，或用下面的按鈕記帳、查收入、查詢。\n${dashboardLinkText()}`,
+      `嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼，或用下面的按鈕記帳（支出/收入）、查詢、看報表。\n${dashboardLinkText()}`,
       { reply_markup: mainMenuKeyboard() }
     )
   );

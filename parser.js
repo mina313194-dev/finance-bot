@@ -1,5 +1,17 @@
 // 規則式（非 AI）中文訊息解析器：把使用者輸入的自然語句轉成結構化意圖
 
+const KNOWN_CARDS = ['永豐', '台新', '聯邦', '玉山', '華南', '國泰', '連線', '土地', '現金'];
+
+// matches a known bank/card name at the very start of the message, optionally
+// followed by 卡/信用卡/銀行 (e.g. "永豐 午餐 150", "台新卡 電信 500")
+function extractCard(text) {
+  for (const name of KNOWN_CARDS) {
+    const re = new RegExp(`^${name}(?:信用卡|銀行|卡)?\\s+`);
+    if (re.test(text)) return name;
+  }
+  return null;
+}
+
 const INCOME_CATEGORIES = {
   '薪資': ['薪水', '薪資', '發薪', '月薪'],
   '年終': ['年終', '年終獎金', '尾牙'],
@@ -9,7 +21,7 @@ const INCOME_CATEGORIES = {
 };
 
 const EXPENSE_CATEGORIES = {
-  '餐飲': ['早餐', '午餐', '晚餐', '消夜', '宵夜', '飲料', '咖啡', '吃飯', '餐廳', '便當', '奶茶', '吃'],
+  '餐飲': ['早餐', '午餐', '晚餐', '消夜', '宵夜', '飲料', '咖啡', '吃飯', '餐廳', '便當', '奶茶', '吃', '麥當勞', '肯德基', '摩斯', 'MOS', '星巴克'],
   '交通': ['捷運', '計程車', '加油', '加油錢', '停車', '公車', 'uber', '油錢', '高鐵', '火車', '機票'],
   '服飾': ['衣服', '褲子', '外套', '鞋子', '洋裝', '裙子', '襪子'],
   '運動': ['瑜珈', '皮拉提斯', '健身', '游泳', '路跑', '重訓', '運動'],
@@ -111,6 +123,7 @@ function parseTransaction(text) {
     category,
     amount,
     date: extractDate(text),
+    card: extractCard(text),
     note: text,
   };
 }

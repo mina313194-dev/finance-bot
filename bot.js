@@ -1,4 +1,9 @@
-const { Bot, InlineKeyboardBuilder, registerExpressWebhook } = require('node-telegram-bot-api');
+const {
+  Bot,
+  InlineKeyboardBuilder,
+  ReplyKeyboardBuilder,
+  registerExpressWebhook,
+} = require('node-telegram-bot-api');
 const logic = require('./logic');
 const parser = require('./parser');
 
@@ -39,6 +44,24 @@ const CARD_EMOJI = {
   現金: '💵',
 };
 
+const INCOME_EMOJI = {
+  薪資: '💼',
+  獎金: '🎁',
+  年終: '🧧',
+  投資收益: '📈',
+  其他收入: '💰',
+};
+
+function mainMenuKeyboard() {
+  return new ReplyKeyboardBuilder()
+    .text('記帳')
+    .text('收入')
+    .row()
+    .text('查詢')
+    .text('說明')
+    .build({ resize_keyboard: true });
+}
+
 // per-chat guided-entry state (in-memory - fine for a single-user bot; a
 // server restart mid-flow just means starting the flow over)
 const flowState = new Map();
@@ -54,6 +77,16 @@ function categoryKeyboard() {
   const builder = new InlineKeyboardBuilder();
   for (const row of chunk(categories, 3)) {
     for (const cat of row) builder.text(`${CATEGORY_EMOJI[cat] || '📦'} ${cat}`, `cat:${cat}`);
+    builder.row();
+  }
+  return builder.build();
+}
+
+function incomeCategoryKeyboard() {
+  const categories = Object.keys(parser.INCOME_CATEGORIES);
+  const builder = new InlineKeyboardBuilder();
+  for (const row of chunk(categories, 3)) {
+    for (const cat of row) builder.text(`${INCOME_EMOJI[cat] || '💰'} ${cat}`, `inc:${cat}`);
     builder.row();
   }
   return builder.build();
@@ -149,25 +182,26 @@ async function handleText(ctx) {
   if (flow && flow.step === 'amount') {
     if (text === '取消') {
       flowState.delete(chatId);
-      await ctx.reply('已取消記帳。');
+      await ctx.reply(flow.type === 'income' ? '已取消記錄收入。' : '已取消記帳。');
       return;
     }
     const amount = parseFloat(text.replace(/[,，元塊]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) {
-      await ctx.reply('請直接輸入金額數字（例如 150），或輸入「取消」放棄這筆記帳。');
+      await ctx.reply('請直接輸入金額數字（例如 150），或輸入「取消」放棄。');
       return;
     }
     flowState.delete(chatId);
     try {
+      const cardPart = flow.card ? `${flow.card} ` : '';
       const reply = await logic.recordTransaction({
         date: new Date().toISOString().slice(0, 10),
-        type: 'expense',
+        type: flow.type,
         category: flow.category,
         amount,
-        card: flow.card,
-        note: `${flow.card} ${flow.category} ${amount}`,
+        card: flow.card || null,
+        note: `${cardPart}${flow.category} ${amount}`,
       });
-      await ctx.reply(reply);
+      await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     } catch (err) {
       console.error('guided entry record error:', err);
       await ctx.reply('記帳時發生錯誤，請稍後再試一次。');
@@ -192,8 +226,14 @@ async function handleText(ctx) {
   }
 
   if (text === '記帳') {
-    flowState.set(chatId, { step: 'category' });
+    flowState.set(chatId, { step: 'category', type: 'expense' });
     await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
+    return;
+  }
+
+  if (text === '收入') {
+    flowState.set(chatId, { step: 'category', type: 'income' });
+    await ctx.reply('選擇收入類別：', { reply_markup: incomeCategoryKeyboard() });
     return;
   }
 
@@ -210,7 +250,8 @@ async function handleText(ctx) {
 
   try {
     const result = await logic.handleMessage(text);
-    await ctx.reply(result.reply);
+    const showMenu = text === '說明';
+    await ctx.reply(result.reply, showMenu ? { reply_markup: mainMenuKeyboard() } : undefined);
   } catch (err) {
     console.error('Telegram handleMessage error:', err);
     await ctx.reply('處理時發生錯誤，請稍後再試一次。');
@@ -229,7 +270,7 @@ async function handleCallbackQuery(ctx) {
 
   if (data.startsWith('cat:')) {
     const category = data.slice(4);
-    flowState.set(chatId, { step: 'card', category });
+    flowState.set(chatId, { step: 'card', type: 'expense', category });
     await ctx.answerCallbackQuery({});
     await ctx.api.editMessageText({
       chat_id: chatId,
@@ -247,12 +288,24 @@ async function handleCallbackQuery(ctx) {
       await ctx.answerCallbackQuery({ text: '請重新輸入「記帳」開始' });
       return;
     }
-    flowState.set(chatId, { step: 'amount', category: flow.category, card });
+    flowState.set(chatId, { step: 'amount', type: 'expense', category: flow.category, card });
     await ctx.answerCallbackQuery({});
     await ctx.api.editMessageText({
       chat_id: chatId,
       message_id: ctx.callbackQuery.message.message_id,
       text: `類別：${flow.category}　付款：${card}\n請輸入金額（例如 150），或輸入「取消」放棄`,
+    });
+    return;
+  }
+
+  if (data.startsWith('inc:')) {
+    const category = data.slice(4);
+    flowState.set(chatId, { step: 'amount', type: 'income', category });
+    await ctx.answerCallbackQuery({});
+    await ctx.api.editMessageText({
+      chat_id: chatId,
+      message_id: ctx.callbackQuery.message.message_id,
+      text: `收入類別：${category}\n請輸入金額（例如 45000），或輸入「取消」放棄`,
     });
     return;
   }
@@ -292,14 +345,14 @@ async function handleCallbackQuery(ctx) {
     const action = data.slice(7);
     await ctx.answerCallbackQuery({});
     if (action === 'record') {
-      flowState.set(chatId, { step: 'category' });
+      flowState.set(chatId, { step: 'category', type: 'expense' });
       await ctx.reply('選擇消費類別：', { reply_markup: categoryKeyboard() });
     } else if (action === 'query') {
       flowState.set(chatId, { step: 'query_date' });
       await ctx.reply(defaultQueryRangeHint());
     } else {
       flowState.delete(chatId);
-      await ctx.reply('好的，查詢結束 👋');
+      await ctx.reply('好的，查詢結束 👋', { reply_markup: mainMenuKeyboard() });
     }
     return;
   }
@@ -333,7 +386,8 @@ function init(app) {
   botInstance = bot;
   bot.command('start', (ctx) =>
     ctx.reply(
-      `嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼，或輸入「記帳」用按鈕記一筆消費。\n${dashboardLinkText()}`
+      `嗨！我是你的財務小幫手。輸入「說明」看看我能做什麼，或用下面的按鈕記帳、查收入、查詢。\n${dashboardLinkText()}`,
+      { reply_markup: mainMenuKeyboard() }
     )
   );
   bot.on('message', handleText);

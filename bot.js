@@ -530,6 +530,13 @@ async function sendMonthlySurplusReminder() {
   return true;
 }
 
+async function sendPaydayTransferReminder() {
+  if (!botInstance || !ALLOWED_CHAT_ID) return false;
+  const text = await logic.buildPaydayTransferReminderText();
+  await botInstance.api.sendMessage({ chat_id: ALLOWED_CHAT_ID, text });
+  return true;
+}
+
 function init(app) {
   if (!TOKEN) {
     console.log('TELEGRAM_BOT_TOKEN 未設定，略過 Telegram 機器人啟動。');
@@ -563,4 +570,4 @@ function init(app) {
   return bot;
 }
 
-module.exports = { init, sendWeeklyReport, sendMonthlySurplusReminder };
+module.exports = { init, sendWeeklyReport, sendMonthlySurplusReminder, sendPaydayTransferReminder };

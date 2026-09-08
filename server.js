@@ -116,6 +116,20 @@ app.post('/api/cron/monthly-surplus-reminder', async (req, res) => {
   }
 });
 
+app.post('/api/cron/payday-transfer-reminder', async (req, res) => {
+  const secret = req.get('X-Cron-Secret');
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const sent = await bot.sendPaydayTransferReminder();
+    res.json({ sent });
+  } catch (err) {
+    console.error('payday transfer reminder error:', err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 (async () => {

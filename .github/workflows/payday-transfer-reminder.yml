@@ -1,0 +1,15 @@
+name: Payday transfer reminder
+
+on:
+  schedule:
+    - cron: '19 1 15 * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger payday transfer reminder
+        run: |
+          curl -fsS -X POST "https://finance-bot-s4a5.onrender.com/api/cron/payday-transfer-reminder" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}"

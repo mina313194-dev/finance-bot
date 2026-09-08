@@ -729,6 +729,26 @@ async function buildMonthlySurplusReminderText() {
   return lines.join('\n');
 }
 
+function nextMonthKey(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// fixed reminder text for payday (15th): a manual checklist of amounts to set
+// aside for next month before spending the rest — not derived from live data,
+// so update the numbers here directly if they change.
+async function buildPaydayTransferReminderText() {
+  const next = nextMonthKey(currentMonthKey());
+  return [
+    '💰 發薪日提醒',
+    `記得先撥出 ${next} 的預算：`,
+    `　🧾 稅金：${fmt(525)}`,
+    `　📌 固定支出：${fmt(7310)}`,
+    `　🏦 存款：${fmt(12000)}`,
+  ].join('\n');
+}
+
 // only these income categories trigger automatic budget top-ups; investment
 // income, refunds, etc. are just recorded without touching allocation plans
 const ALLOCATION_TRIGGER_CATEGORIES = ['薪資', '獎金', '年終'];
@@ -911,6 +931,7 @@ module.exports = {
   setRolloverCategory,
   buildWeeklyBudgetReportText,
   buildMonthlySurplusReminderText,
+  buildPaydayTransferReminderText,
   currentMonthKey,
   fmt,
 };

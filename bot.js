@@ -152,10 +152,14 @@ function queryFollowUpKeyboard(showDetailButton) {
   return builder.build();
 }
 
+function mmddToDate(mmdd) {
+  const year = new Date().getFullYear();
+  return `${year}-${mmdd.slice(0, 2)}-${mmdd.slice(2, 4)}`;
+}
+
 // accepts "MMDD-MMDD" (range) or a single "MMDD" (that one day), current year assumed
 function parseQueryDateInput(text) {
-  const year = new Date().getFullYear();
-  const toDate = (mmdd) => `${year}-${mmdd.slice(0, 2)}-${mmdd.slice(2, 4)}`;
+  const toDate = mmddToDate;
   const toLabel = (mmdd) => `${parseInt(mmdd.slice(0, 2), 10)}/${mmdd.slice(2, 4)}`;
 
   let m = text.match(/(\d{4})-(\d{4})/);
@@ -180,6 +184,37 @@ function defaultQueryRangeHint() {
   const monthStart = `${String(now.getMonth() + 1).padStart(2, '0')}01`;
   const today = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
   return `請輸入查詢區間：\n\n區間：${monthStart}-${today}\n單日請輸入四碼，例如：${today}`;
+}
+
+function todayMMDD() {
+  const now = new Date();
+  return `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function buildExpenseTemplateText() {
+  return [
+    '請直接複製修改後回傳：',
+    '若不記帳請輸入「取消」',
+    '',
+    '📂 類別：餐飲 / 交通 / 購物 / 娛樂 / 其他',
+    '💳 付款：現金 / 永豐 / 玉山 / 台新 / 國泰 / 聯邦 / 華南',
+    '',
+    `日期：${todayMMDD()}`,
+    '類別：',
+    '金額：',
+    '付款：',
+    '備註：',
+  ].join('\n');
+}
+
+// parses the filled-in template back: lines like "欄位：值"
+function parseTemplateFill(text) {
+  const fields = {};
+  for (const line of text.split('\n')) {
+    const m = line.trim().match(/^(日期|類別|金額|付款|備註)[：:]\s*(.*)$/);
+    if (m) fields[m[1]] = m[2].trim();
+  }
+  return fields;
 }
 
 function dashboardLinkText() {
@@ -256,6 +291,43 @@ async function handleText(ctx) {
     return;
   }
 
+  if (flow && flow.step === 'template_fill') {
+    const fields = parseTemplateFill(text);
+    const errors = [];
+
+    const dateStr = fields['日期'] || todayMMDD();
+    if (!/^\d{4}$/.test(dateStr)) errors.push('日期要是 4 碼數字，例如 0908');
+
+    const amount = parseFloat((fields['金額'] || '').replace(/[,，元塊]/g, ''));
+    if (!Number.isFinite(amount) || amount <= 0) errors.push('金額要填正確的數字');
+
+    if (!fields['類別']) errors.push('類別不能空白');
+
+    if (errors.length) {
+      await ctx.reply(`❌ 格式有誤：\n${errors.join('\n')}\n\n請重新複製範本填寫，或輸入「取消」放棄。\n\n${buildExpenseTemplateText()}`);
+      return;
+    }
+
+    const category = parser.matchExpenseCategory(fields['類別']);
+    const card = parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
+    flowState.delete(chatId);
+    try {
+      const reply = await logic.recordTransaction({
+        date: mmddToDate(dateStr),
+        type: 'expense',
+        category,
+        amount,
+        card,
+        note: fields['備註'] || `${fields['類別']} ${amount}`,
+      });
+      await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
+    } catch (err) {
+      console.error('template fill record error:', err);
+      await ctx.reply('記帳時發生錯誤，請稍後再試一次。');
+    }
+    return;
+  }
+
   if (text === '記帳') {
     await ctx.reply('要記支出還是收入？', { reply_markup: recordSubmenuKeyboard() });
     return;
@@ -304,13 +376,12 @@ async function handleCallbackQuery(ctx) {
   }
 
   if (data === 'sub:expense') {
-    flowState.set(chatId, { step: 'category', type: 'expense' });
+    flowState.set(chatId, { step: 'template_fill', type: 'expense' });
     await ctx.answerCallbackQuery({});
     await ctx.api.editMessageText({
       chat_id: chatId,
       message_id: ctx.callbackQuery.message.message_id,
-      text: '選擇消費類別：',
-      reply_markup: categoryKeyboard(),
+      text: buildExpenseTemplateText(),
     });
     return;
   }

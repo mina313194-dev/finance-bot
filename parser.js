@@ -37,6 +37,8 @@ const EXPENSE_CATEGORIES = {
   '訂閱': ['訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store'],
   '電信': ['電信', '手機費', '通話費', '門號', '台新電信', 'sim卡'],
   '教育': ['課程', '學費', '補習', '上課', '講座'],
+  '購物': ['網購', '賣場', '大賣場', '百貨', '電器', '3c', '文具', '日用品'],
+  '娛樂': ['電影', '遊戲', '唱歌', 'ktv', '旅遊', '門票', '展覽'],
 };
 
 const ALL_CATEGORIES = [
@@ -91,6 +93,12 @@ function matchCategory(text, dict) {
     }
   }
   return null;
+}
+
+// used by structured inputs (e.g. the Telegram fill-in-the-blank template)
+// where the whole field is just a category name/keyword to resolve
+function matchExpenseCategory(text) {
+  return matchCategory(text, EXPENSE_CATEGORIES) || '其他支出';
 }
 
 function parseTransaction(text) {
@@ -260,4 +268,5 @@ module.exports = {
   EXPENSE_CATEGORIES,
   ALL_CATEGORIES,
   KNOWN_CARDS,
+  matchExpenseCategory,
 };

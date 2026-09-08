@@ -25,30 +25,43 @@ async function insertTransaction({ date, type, category, amount, note, card }) {
   );
 }
 
-// shared by the free-text parser and the Telegram button flow: records the
-// transaction and returns the confirmation text (budget status for an
-// expense, or the allocation breakdown for a salary/bonus/year-end income)
-async function recordTransaction({ date, type, category, amount, note, card }) {
+// shared by the free-text parser, the Telegram button flow, and the
+// fill-in-template flow: records the transaction and returns the
+// confirmation text (budget status for an expense, or the allocation
+// breakdown for a salary/bonus/year-end income). `displayNote` is optional
+// and separate from the stored `note` (an internal audit string) - it's
+// only shown when the entry method captured a genuine user-written note.
+async function recordTransaction({ date, type, category, amount, note, card, displayNote }) {
   await insertTransaction({ date, type, category, amount, note, card });
-  let reply = `已記錄${type === 'income' ? '收入' : '支出'}：${category} ${fmt(amount)}`;
+
+  const emoji = (type === 'income' ? parser.INCOME_EMOJI : parser.CATEGORY_EMOJI)[category] || '📦';
+  const lines = [
+    '✅ 已記錄！',
+    `日期：${date.replace(/-/g, '/')}`,
+    `類別：${emoji} ${category}`,
+    `金額：$${Math.round(amount).toLocaleString()}`,
+  ];
+  if (card) lines.push(`付款：${card}`);
+  if (displayNote) lines.push(`備註：${displayNote}`);
+
   if (type === 'expense') {
     const statusList = await getBudgetStatus(monthKeyOf(date));
     const status = statusList.find((b) => b.category === category);
     if (status && status.spent > status.limit) {
-      reply += `\n⚠️ 本月「${category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(status.spent)}`;
+      lines.push('', `⚠️ 本月「${category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(status.spent)}`);
     } else if (status) {
-      reply += `\n本月「${category}」預算剩餘 ${fmt(status.remaining)}`;
+      lines.push('', `本月「${category}」預算剩餘 ${fmt(status.remaining)}`);
     }
   } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(category)) {
     const applied = await applyIncomeAllocation(amount, monthKeyOf(date));
     if (applied.length) {
-      reply += '\n已依分配計畫加進當月預算：';
+      lines.push('', '已依分配計畫加進當月預算：');
       for (const a of applied) {
-        reply += `\n　${a.category} +${fmt(a.share)}（${a.percent}%）`;
+        lines.push(`　${a.category} +${fmt(a.share)}（${a.percent}%）`);
       }
     }
   }
-  return reply;
+  return lines.join('\n');
 }
 
 async function getMonthTransactions(monthKey) {

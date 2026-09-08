@@ -13,24 +13,7 @@ const WEBHOOK_BASE_URL = process.env.TELEGRAM_WEBHOOK_URL || '';
 const WEBHOOK_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
 const WEBHOOK_PATH = '/api/telegram/webhook';
 
-const CATEGORY_EMOJI = {
-  餐飲: '🍔',
-  交通: '🚗',
-  服飾: '👕',
-  運動: '🏃',
-  孝親費: '👪',
-  機車費: '🏍️',
-  投資: '📈',
-  交際費: '🍻',
-  稅金: '🧾',
-  醫療保健: '🏥',
-  捐款: '💝',
-  保險: '🛡️',
-  美容美髮: '💇',
-  訂閱: '🔁',
-  電信: '📱',
-  教育: '📚',
-};
+const { CATEGORY_EMOJI, INCOME_EMOJI } = parser;
 
 const CARD_EMOJI = {
   永豐: '🟡',
@@ -42,14 +25,6 @@ const CARD_EMOJI = {
   連線: '💚',
   土地: '🟫',
   現金: '💵',
-};
-
-const INCOME_EMOJI = {
-  薪資: '💼',
-  獎金: '🎁',
-  年終: '🧧',
-  投資收益: '📈',
-  其他收入: '💰',
 };
 
 function mainMenuKeyboard() {
@@ -319,6 +294,7 @@ async function handleText(ctx) {
         amount,
         card,
         note: fields['備註'] || `${fields['類別']} ${amount}`,
+        displayNote: fields['備註'] || undefined,
       });
       await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     } catch (err) {

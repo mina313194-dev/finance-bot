@@ -2,6 +2,35 @@
 
 const KNOWN_CARDS = ['永豐', '台新', '聯邦', '玉山', '華南', '國泰', '連線', '土地', '現金'];
 
+const CATEGORY_EMOJI = {
+  餐飲: '🍔',
+  交通: '🚗',
+  服飾: '👕',
+  運動: '🏃',
+  孝親費: '👪',
+  機車費: '🏍️',
+  投資: '📈',
+  交際費: '🍻',
+  稅金: '🧾',
+  醫療保健: '🏥',
+  捐款: '💝',
+  保險: '🛡️',
+  美容美髮: '💇',
+  訂閱: '🔁',
+  電信: '📱',
+  教育: '📚',
+  購物: '🛍️',
+  娛樂: '🎬',
+};
+
+const INCOME_EMOJI = {
+  薪資: '💼',
+  獎金: '🎁',
+  年終: '🧧',
+  投資收益: '📈',
+  其他收入: '💰',
+};
+
 // matches a known bank/card name at the very start of the message, optionally
 // followed by 卡/信用卡/銀行 (e.g. "永豐 午餐 150", "台新卡 電信 500")
 function extractCard(text) {
@@ -269,4 +298,6 @@ module.exports = {
   ALL_CATEGORIES,
   KNOWN_CARDS,
   matchExpenseCategory,
+  CATEGORY_EMOJI,
+  INCOME_EMOJI,
 };

@@ -130,6 +130,38 @@ function matchExpenseCategory(text) {
   return matchCategory(text, EXPENSE_CATEGORIES) || '其他支出';
 }
 
+// resolves a bare category token (typed for a delete lookup, not a full
+// sentence) against both income and expense category names/keywords, since
+// the caller doesn't know in advance which type the transaction was
+function resolveCategory(text) {
+  if (Object.prototype.hasOwnProperty.call(INCOME_CATEGORIES, text)) {
+    return { type: 'income', category: text };
+  }
+  if (Object.prototype.hasOwnProperty.call(EXPENSE_CATEGORIES, text)) {
+    return { type: 'expense', category: text };
+  }
+  if (text === '其他收入') return { type: 'income', category: '其他收入' };
+  if (text === '其他支出') return { type: 'expense', category: '其他支出' };
+  const inc = matchCategory(text, INCOME_CATEGORIES);
+  if (inc) return { type: 'income', category: inc };
+  const exp = matchCategory(text, EXPENSE_CATEGORIES);
+  if (exp) return { type: 'expense', category: exp };
+  return null;
+}
+
+// resolves a "M/D" or "YYYY-MM-DD" token (typed by the user, not inferred
+// from relative words) into a canonical YYYY-MM-DD date, or null if neither
+function resolveDateToken(token) {
+  let m = token.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = token.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m) {
+    const year = new Date().getFullYear();
+    return `${year}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  }
+  return null;
+}
+
 function parseTransaction(text) {
   const amount = extractAmount(text);
   if (amount === null) return null;
@@ -268,6 +300,24 @@ function parse(rawText) {
     return { intent: 'query_budget_suggestion' };
   }
 
+  m = text.match(/^刪除\s*#?(\d+)$/);
+  if (m) {
+    return { intent: 'delete_transaction_by_id', id: parseInt(m[1], 10) };
+  }
+
+  m = text.match(/^刪除\s*(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2})\s+(\S+)\s+(\d+(?:\.\d+)?)/);
+  if (m) {
+    const date = resolveDateToken(m[1]);
+    const resolved = resolveCategory(m[2]);
+    return {
+      intent: 'delete_transaction',
+      date,
+      type: resolved ? resolved.type : null,
+      category: resolved ? resolved.category : m[2],
+      amount: parseFloat(m[3]),
+    };
+  }
+
   m = text.match(/^設定繳款日\s*(\S+?)\s*(\d{1,2})/);
   if (m) {
     return { intent: 'set_card_due_date', card: m[1], dueDay: parseInt(m[2], 10) };
@@ -298,6 +348,8 @@ module.exports = {
   ALL_CATEGORIES,
   KNOWN_CARDS,
   matchExpenseCategory,
+  resolveCategory,
+  resolveDateToken,
   CATEGORY_EMOJI,
   INCOME_EMOJI,
 };

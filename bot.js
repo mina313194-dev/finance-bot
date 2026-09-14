@@ -192,6 +192,17 @@ function parseTemplateFill(text) {
   return fields;
 }
 
+// recognizes a pasted fill-in-template message even when the flow state that
+// normally tracks "user is mid-template" has been lost - e.g. Render's free
+// tier restarts the process on idle, which wipes the in-memory flowState Map.
+// Without this, a returning template paste fell through to the old free-text
+// parser and got silently misparsed (category read from the instruction line,
+// amount read from the date field) instead of being handled correctly.
+function looksLikeTemplateFill(text) {
+  const fields = parseTemplateFill(text);
+  return Object.keys(fields).length >= 3;
+}
+
 function dashboardLinkText() {
   return WEBHOOK_BASE_URL
     ? `網頁儀表板：${WEBHOOK_BASE_URL.replace(/\/$/, '')}`
@@ -266,7 +277,10 @@ async function handleText(ctx) {
     return;
   }
 
-  if (flow && flow.step === 'template_fill') {
+  const isTemplateFillFlow = flow && flow.step === 'template_fill';
+  const isBareTemplateFill = !isTemplateFillFlow && !flow && looksLikeTemplateFill(text);
+
+  if (isTemplateFillFlow || isBareTemplateFill) {
     const fields = parseTemplateFill(text);
     const errors = [];
 

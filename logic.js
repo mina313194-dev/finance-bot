@@ -64,6 +64,41 @@ async function recordTransaction({ date, type, category, amount, note, card, dis
   return lines.join('\n');
 }
 
+async function getTransactionById(id) {
+  return db.get(`SELECT * FROM transactions WHERE id = ?`, [id]);
+}
+
+async function deleteTransactionById(id) {
+  const row = await getTransactionById(id);
+  if (!row) return null;
+  await db.run(`DELETE FROM transactions WHERE id = ?`, [id]);
+  return row;
+}
+
+async function findTransactionsMatch(date, category, amount, type) {
+  const params = [date, category, amount];
+  let sql = `SELECT * FROM transactions WHERE date = ? AND category = ? AND amount = ?`;
+  if (type) {
+    sql += ` AND type = ?`;
+    params.push(type);
+  }
+  sql += ` ORDER BY id`;
+  return db.all(sql, params);
+}
+
+function formatDeletedTransaction(row) {
+  const emoji = (row.type === 'income' ? parser.INCOME_EMOJI : parser.CATEGORY_EMOJI)[row.category] || '📦';
+  const lines = [
+    '🗑️ 已刪除！',
+    `日期：${row.date.replace(/-/g, '/')}`,
+    `類別：${emoji} ${row.category}`,
+    `金額：$${Math.round(row.amount).toLocaleString()}`,
+  ];
+  if (row.card) lines.push(`付款：${row.card}`);
+  if (row.note) lines.push(`備註：${row.note}`);
+  return lines.join('\n');
+}
+
 async function getMonthTransactions(monthKey) {
   return db.all(
     `SELECT * FROM transactions WHERE substr(date,1,7) = ? ORDER BY date DESC, id DESC`,
@@ -770,6 +805,7 @@ const HELP_TEXT = [
   '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
+  '刪除紀錄：「刪除 9/12 交通 52」（用日期＋類別＋金額比對，找到多筆會列出編號讓你指定），或直接「刪除 #87」用編號刪',
   '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」「轉帳建議」',
 ].join('\n');
 
@@ -896,6 +932,37 @@ async function handleMessage(text) {
       await setCardDueDate(intent.card, intent.dueDay);
       return { reply: `已設定「${intent.card}」的繳款日為每月 ${intent.dueDay} 號`, refresh: true };
 
+    case 'delete_transaction_by_id': {
+      const deleted = await deleteTransactionById(intent.id);
+      if (!deleted) return { reply: `找不到編號 #${intent.id} 的紀錄。`, refresh: false };
+      return { reply: formatDeletedTransaction(deleted), refresh: true };
+    }
+
+    case 'delete_transaction': {
+      if (!intent.date) {
+        return {
+          reply: '看不懂日期格式，請用「刪除 9/12 交通 52」這樣的格式（日期可以是 9/12 或 2026-09-12）。',
+          refresh: false,
+        };
+      }
+      const matches = await findTransactionsMatch(intent.date, intent.category, intent.amount, intent.type);
+      if (!matches.length) {
+        return {
+          reply: `找不到符合的紀錄：${intent.date.replace(/-/g, '/')} ${intent.category} ${fmt(intent.amount)}`,
+          refresh: false,
+        };
+      }
+      if (matches.length > 1) {
+        const lines = ['找到多筆符合的紀錄，請用「刪除 #編號」指定要刪除哪一筆：'];
+        for (const r of matches) {
+          lines.push(`　#${r.id}　${r.date.replace(/-/g, '/')}　${r.category}　${fmt(r.amount)}${r.card ? `（${r.card}）` : ''}${r.note ? `　備註：${r.note}` : ''}`);
+        }
+        return { reply: lines.join('\n'), refresh: false };
+      }
+      const deleted = await deleteTransactionById(matches[0].id);
+      return { reply: formatDeletedTransaction(deleted), refresh: true };
+    }
+
     default:
       return {
         reply:
@@ -932,6 +999,9 @@ module.exports = {
   buildWeeklyBudgetReportText,
   buildMonthlySurplusReminderText,
   buildPaydayTransferReminderText,
+  getTransactionById,
+  deleteTransactionById,
+  findTransactionsMatch,
   currentMonthKey,
   fmt,
 };

@@ -239,6 +239,22 @@ async function handleText(ctx) {
     return;
   }
 
+  // "刪除" also works at every step, same reasoning as 取消 above - otherwise
+  // a leftover flow (e.g. mid 記帳/查詢, or stuck after a Render restart) would
+  // swallow the delete command as an invalid answer to whatever step it's on,
+  // instead of actually deleting anything
+  if (/^刪除/.test(text)) {
+    if (flow) flowState.delete(chatId);
+    try {
+      const result = await logic.handleMessage(text);
+      await ctx.reply(result.reply, { reply_markup: mainMenuKeyboard() });
+    } catch (err) {
+      console.error('Telegram 刪除 error:', err);
+      await ctx.reply('刪除時發生錯誤，請稍後再試一次。');
+    }
+    return;
+  }
+
   if (flow && flow.step === 'amount') {
     const amount = parseFloat(text.replace(/[,，元塊]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) {

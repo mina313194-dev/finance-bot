@@ -130,6 +130,10 @@ function matchExpenseCategory(text) {
   return matchCategory(text, EXPENSE_CATEGORIES) || '其他支出';
 }
 
+function matchIncomeCategory(text) {
+  return matchCategory(text, INCOME_CATEGORIES) || '其他收入';
+}
+
 // resolves a bare category token (typed for a delete lookup, not a full
 // sentence) against both income and expense category names/keywords, since
 // the caller doesn't know in advance which type the transaction was
@@ -348,6 +352,7 @@ module.exports = {
   ALL_CATEGORIES,
   KNOWN_CARDS,
   matchExpenseCategory,
+  matchIncomeCategory,
   resolveCategory,
   resolveDateToken,
   CATEGORY_EMOJI,

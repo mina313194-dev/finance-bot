@@ -77,22 +77,6 @@ function categoryKeyboard(showAll = false) {
   return builder.build();
 }
 
-const FAVORITE_INCOME_CATEGORIES = ['薪資', '投資收益'];
-
-function incomeCategoryKeyboard(showAll = false) {
-  const all = Object.keys(parser.INCOME_CATEGORIES);
-  const categories = showAll
-    ? all.filter((c) => !FAVORITE_INCOME_CATEGORIES.includes(c))
-    : FAVORITE_INCOME_CATEGORIES;
-  const builder = new InlineKeyboardBuilder();
-  for (const row of chunk(categories, 3)) {
-    for (const cat of row) builder.text(`${INCOME_EMOJI[cat] || '💰'} ${cat}`, `inc:${cat}`);
-    builder.row();
-  }
-  addMoreAndCancel(builder, !showAll && 'inc:more');
-  return builder.build();
-}
-
 const FAVORITE_CARDS = ['永豐', '玉山'];
 
 function cardKeyboard(showAll = false) {
@@ -178,6 +162,20 @@ function buildExpenseTemplateText() {
     '類別：',
     '金額：',
     '付款：',
+    '備註：',
+  ].join('\n');
+}
+
+function buildIncomeTemplateText() {
+  return [
+    '請直接複製修改後回傳：',
+    '若不記帳請輸入「取消」',
+    '',
+    '📂 類別：薪資 / 獎金 / 年終 / 投資收益 / 其他',
+    '',
+    `日期：${todayMMDD()}`,
+    '類別：',
+    '金額：',
     '備註：',
   ].join('\n');
 }
@@ -292,18 +290,26 @@ async function handleText(ctx) {
 
     if (!fields['類別']) errors.push('類別不能空白');
 
+    // flow.type is authoritative when a flow is tracked; for a bare paste
+    // (flow state lost), fall back to resolving the category text itself,
+    // then default to expense since that's the more common entry
+    const resolved = fields['類別'] ? parser.resolveCategory(fields['類別']) : null;
+    const type = isTemplateFillFlow ? flow.type : resolved ? resolved.type : 'expense';
+
     if (errors.length) {
-      await ctx.reply(`❌ 格式有誤：\n${errors.join('\n')}\n\n請重新複製範本填寫，或輸入「取消」放棄。\n\n${buildExpenseTemplateText()}`);
+      const template = type === 'income' ? buildIncomeTemplateText() : buildExpenseTemplateText();
+      await ctx.reply(`❌ 格式有誤：\n${errors.join('\n')}\n\n請重新複製範本填寫，或輸入「取消」放棄。\n\n${template}`);
       return;
     }
 
-    const category = parser.matchExpenseCategory(fields['類別']);
-    const card = parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
+    const category =
+      type === 'income' ? parser.matchIncomeCategory(fields['類別']) : parser.matchExpenseCategory(fields['類別']);
+    const card = type === 'expense' && parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
     flowState.delete(chatId);
     try {
       const reply = await logic.recordTransaction({
         date: mmddToDate(dateStr),
-        type: 'expense',
+        type,
         category,
         amount,
         card,
@@ -377,13 +383,12 @@ async function handleCallbackQuery(ctx) {
   }
 
   if (data === 'sub:income') {
-    flowState.set(chatId, { step: 'category', type: 'income' });
+    flowState.set(chatId, { step: 'template_fill', type: 'income' });
     await ctx.answerCallbackQuery({});
     await ctx.api.editMessageText({
       chat_id: chatId,
       message_id: ctx.callbackQuery.message.message_id,
-      text: '選擇收入類別：',
-      reply_markup: incomeCategoryKeyboard(),
+      text: buildIncomeTemplateText(),
     });
     return;
   }
@@ -441,29 +446,6 @@ async function handleCallbackQuery(ctx) {
       chat_id: chatId,
       message_id: ctx.callbackQuery.message.message_id,
       text: `類別：${flow.category}　付款：${card}\n請輸入金額（例如 150），或輸入「取消」放棄`,
-    });
-    return;
-  }
-
-  if (data === 'inc:more') {
-    await ctx.answerCallbackQuery({});
-    await ctx.api.editMessageText({
-      chat_id: chatId,
-      message_id: ctx.callbackQuery.message.message_id,
-      text: '選擇收入類別：',
-      reply_markup: incomeCategoryKeyboard(true),
-    });
-    return;
-  }
-
-  if (data.startsWith('inc:')) {
-    const category = data.slice(4);
-    flowState.set(chatId, { step: 'amount', type: 'income', category });
-    await ctx.answerCallbackQuery({});
-    await ctx.api.editMessageText({
-      chat_id: chatId,
-      message_id: ctx.callbackQuery.message.message_id,
-      text: `收入類別：${category}\n請輸入金額（例如 45000），或輸入「取消」放棄`,
     });
     return;
   }

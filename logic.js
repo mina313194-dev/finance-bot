@@ -148,10 +148,10 @@ async function buildRangeAmountText(startDate, endDate, label) {
 async function buildRangeDetailText(startDate, endDate, label) {
   const rows = await getTransactionsInRange(startDate, endDate);
   if (!rows.length) return `🔍 查詢結果\n期間：${label}\n\n這段期間沒有任何紀錄。`;
-  const lines = [`🔍 查詢結果\n期間：${label}`, ''];
+  const lines = [`🔍 查詢結果\n期間：${label}`, '（每筆前面的 #編號 可以用「刪除 #編號」直接刪掉那一筆）', ''];
   for (const r of rows) {
     const sign = r.type === 'income' ? '+' : '-';
-    lines.push(`${r.date}　${r.category}　${sign}${fmt(r.amount)}${r.card ? `（${r.card}）` : ''}`);
+    lines.push(`#${r.id}　${r.date}　${r.category}　${sign}${fmt(r.amount)}${r.card ? `（${r.card}）` : ''}`);
   }
   return lines.join('\n');
 }

@@ -172,10 +172,12 @@ function buildIncomeTemplateText() {
     '若不記帳請輸入「取消」',
     '',
     '📂 類別：薪資 / 獎金 / 年終 / 投資收益 / 其他',
+    '💳 存入：連線 / 現金 / 永豐 / 玉山 / 台新 / 國泰 / 聯邦 / 華南 / 土地',
     '',
     `日期：${todayMMDD()}`,
     '類別：',
     '金額：',
+    '付款：',
     '備註：',
   ].join('\n');
 }
@@ -320,7 +322,7 @@ async function handleText(ctx) {
 
     const category =
       type === 'income' ? parser.matchIncomeCategory(fields['類別']) : parser.matchExpenseCategory(fields['類別']);
-    const card = type === 'expense' && parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
+    const card = parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
     flowState.delete(chatId);
     try {
       const reply = await logic.recordTransaction({

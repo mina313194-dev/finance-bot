@@ -63,7 +63,7 @@ function addMoreAndCancel(builder, moreCallbackData) {
   builder.text('❌ 取消', 'flow:cancel').row();
 }
 
-const FAVORITE_CATEGORIES = ['餐飲', '美容美髮', '服飾'];
+const FAVORITE_CATEGORIES = ['餐飲', '儀容', '交通'];
 
 function categoryKeyboard(showAll = false) {
   const all = Object.keys(parser.EXPENSE_CATEGORIES);

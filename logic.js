@@ -662,12 +662,12 @@ async function buildBudgetAdviceText(monthKey) {
   const sug = buildSuggestion(s.income, expenseCats);
   const lines = [
     `依 50/30/20 法則，本月收入 ${fmt(sug.monthlyIncome)} 的建議分配：`,
-    `必要支出（餐飲/交通/機車費/稅金/醫療保健/保險/孝親費）：建議 ${fmt(
+    `必要支出（餐飲/交通/稅金/醫療保健/保險/電信）：建議 ${fmt(
       sug.recommended.needs
     )}，實際 ${fmt(sug.actual.needs)}${
       sug.diff.needs > 0 ? `（超支 ${fmt(sug.diff.needs)}）` : ''
     }`,
-    `想要支出（服飾/運動/交際費/捐款等）：建議 ${fmt(sug.recommended.wants)}，實際 ${fmt(sug.actual.wants)}${
+    `想要支出（儀容/人情支出/購物/娛樂等）：建議 ${fmt(sug.recommended.wants)}，實際 ${fmt(sug.actual.wants)}${
       sug.diff.wants > 0 ? `（超支 ${fmt(sug.diff.wants)}）` : ''
     }`,
     `儲蓄／投資：建議 ${fmt(sug.recommended.savings)}，目前結餘 ${fmt(sug.actual.savings)}${

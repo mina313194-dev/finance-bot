@@ -5,16 +5,10 @@ const KNOWN_CARDS = ['永豐', '台新', '聯邦', '玉山', '華南', '國泰',
 const CATEGORY_EMOJI = {
   餐飲: '🍔',
   交通: '🚗',
-  儀容: '💇',
+  生活消費: '🛍️',
   人情支出: '🤝',
+  義務支出: '📋',
   投資: '📈',
-  稅金: '🧾',
-  醫療保健: '🏥',
-  保險: '🛡️',
-  數位通訊: '📶',
-  教育: '📚',
-  購物: '🛍️',
-  娛樂: '🎬',
 };
 
 const INCOME_EMOJI = {
@@ -49,26 +43,30 @@ const EXPENSE_CATEGORIES = {
     '捷運', '計程車', '加油', '加油錢', '停車', '公車', 'uber', '油錢', '高鐵', '火車', '機票',
     '齒輪油', '煞車', '皮帶', '機車', '摩托車', '換機油', '機車保養',
   ],
-  // 服飾／運動／美容美髮 merged: all three were discretionary "look after
-  // yourself" spending with no separate budget automation of their own
-  '儀容': [
-    '衣服', '褲子', '外套', '鞋子', '洋裝', '裙子', '襪子',
+  // 儀容／購物／娛樂／教育 merged: everyday discretionary spending with no
+  // budget automation of its own
+  '生活消費': [
+    '衣服', '褲子', '外套', '鞋子', '洋裝', '裙子', '襪子', '儀容',
     '瑜珈', '皮拉提斯', '健身', '游泳', '路跑', '重訓', '運動',
     '美髮', '剪髮', '燙髮', '染髮', '美容', '做臉', '美甲', 'spa',
+    '購物', '網購', '賣場', '大賣場', '百貨', '電器', '3c', '文具', '日用品',
+    '娛樂', '電影', '遊戲', '唱歌', 'ktv', '旅遊', '門票', '展覽',
+    '教育', '課程', '學費', '補習', '上課', '講座',
   ],
   // 孝親費／捐款／交際費 merged: money given to other people rather than
   // spent on yourself
   '人情支出': ['孝親費', '孝親', '給爸媽', '給父母', '捐款', '捐', '樂捐', '公益', '應酬', '交際', '請客', '聚餐', '聚會', '飯局'],
+  // 稅金／醫療保健／保險／數位通訊 merged: fixed or accumulating obligations
+  // that already ran on rollover/recurring-budget automation, now sharing one
+  // rollover pot instead of four separate ones
+  '義務支出': [
+    '稅金', '報稅', '罰單', '牌照稅', '燃料稅',
+    '醫療保健', '看病', '看醫生', '掛號', '掛號費', '中藥', '按摩', '醫院', '診所', '藥局', '西藥',
+    '保險', '保費', '壽險', '車險',
+    '數位通訊', '訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store',
+    '電信', '手機費', '通話費', '門號', '台新電信', 'sim卡',
+  ],
   '投資': ['投資', '買股', '定期定額', '基金', '買基金'],
-  '稅金': ['稅金', '報稅', '罰單', '牌照稅', '燃料稅'],
-  '醫療保健': ['看病', '看醫生', '掛號', '掛號費', '中藥', '按摩', '醫院', '診所', '藥局', '西藥'],
-  '保險': ['保險', '保費', '壽險', '車險'],
-  // 訂閱／電信 merged: both are flat monthly service fees with their own
-  // recurring budget already set up
-  '數位通訊': ['訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store', '電信', '手機費', '通話費', '門號', '台新電信', 'sim卡'],
-  '教育': ['課程', '學費', '補習', '上課', '講座'],
-  '購物': ['網購', '賣場', '大賣場', '百貨', '電器', '3c', '文具', '日用品'],
-  '娛樂': ['電影', '遊戲', '唱歌', 'ktv', '旅遊', '門票', '展覽'],
 };
 
 const ALL_CATEGORIES = [

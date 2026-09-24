@@ -98,9 +98,17 @@ async function init() {
       category TEXT NOT NULL,
       amount REAL NOT NULL,
       start_month TEXT NOT NULL,
-      end_month TEXT
+      end_month TEXT,
+      due_day INTEGER NOT NULL DEFAULT 1
     )
   `);
+  {
+    const info = await client.execute(`PRAGMA table_info(recurring_budgets)`);
+    const columns = info.rows.map((r) => r.name);
+    if (columns.length && !columns.includes('due_day')) {
+      await client.execute(`ALTER TABLE recurring_budgets ADD COLUMN due_day INTEGER NOT NULL DEFAULT 1`);
+    }
+  }
   await client.execute(`
     CREATE TABLE IF NOT EXISTS recurring_budget_log (
       rule_id INTEGER NOT NULL,

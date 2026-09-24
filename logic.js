@@ -372,11 +372,15 @@ async function ensureRecurringIncomeApplied(monthKey) {
 // have multiple non-overlapping (start_month, end_month) phases, e.g. a higher
 // amount while an installment plan runs, then a lower steady-state amount after.
 
-async function setRecurringBudget(category, amount, startMonth, endMonth) {
+async function setRecurringBudget(category, amount, startMonth, endMonth, dueDay) {
   await db.run(
-    `INSERT INTO recurring_budgets (category, amount, start_month, end_month) VALUES (?, ?, ?, ?)`,
-    [category, amount, startMonth, endMonth || null]
+    `INSERT INTO recurring_budgets (category, amount, start_month, end_month, due_day) VALUES (?, ?, ?, ?, ?)`,
+    [category, amount, startMonth, endMonth || null, dueDay || 1]
   );
+}
+
+async function setRecurringBudgetDueDay(category, dueDay) {
+  await db.run(`UPDATE recurring_budgets SET due_day = ? WHERE category = ?`, [dueDay, category]);
 }
 
 async function getRecurringBudgets() {
@@ -407,7 +411,7 @@ async function ensureRecurringBudgetsApplied(monthKey) {
       [r.category, monthKey, r.amount]
     );
     await insertTransaction({
-      date: `${monthKey}-01`,
+      date: `${monthKey}-${String(r.due_day || 1).padStart(2, '0')}`,
       type: 'expense',
       category: r.category,
       amount: r.amount,
@@ -712,7 +716,7 @@ async function buildRecurringBudgetText() {
   }
   const lines = ['目前的固定預算排程：'];
   for (const r of rules) {
-    lines.push(`　${r.category}：${fmt(r.amount)}/月，${r.start_month} 起${
+    lines.push(`　${r.category}：${fmt(r.amount)}/月（每月 ${r.due_day || 1} 號入帳），${r.start_month} 起${
       r.end_month ? `到 ${r.end_month} 止` : '（無結束日期）'
     }`);
   }
@@ -798,7 +802,8 @@ const HELP_TEXT = [
   '設定預算：「設定預算 餐飲 5000」（只套用在這個月）',
   '設定分配計畫：「設定分配 交通 8%」，之後收入入帳會自動照比例加進當月預算',
   '取消分配：「取消分配 交通」',
-  '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用）',
+  '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用，預設每月1號入帳）',
+  '設定固定預算入帳日：「設定固定預算入帳日 義務支出 19」（改成每月固定日期入帳，例如還款日）',
   '設定固定收入：「設定固定收入 薪資 45000 2026-09」（每月自動入帳，薪資/獎金/年終會自動觸發分配）',
   '設定累積類別：「設定累積 稅金」（這個類別沒花完的預算會留到下個月，不會歸零）',
   '取消累積：「取消累積 稅金」',
@@ -872,6 +877,10 @@ async function handleMessage(text) {
 
     case 'query_recurring_budget':
       return { reply: await buildRecurringBudgetText(), refresh: false };
+
+    case 'set_recurring_budget_due_day':
+      await setRecurringBudgetDueDay(intent.category, intent.dueDay);
+      return { reply: `已設定「${intent.category}」固定預算的入帳日為每月 ${intent.dueDay} 號`, refresh: true };
 
     case 'set_rollover_category':
       await setRolloverCategory(intent.category);
@@ -991,6 +1000,7 @@ module.exports = {
   getAllocationRules,
   getRecurringBudgets,
   setRecurringBudget,
+  setRecurringBudgetDueDay,
   getRecurringIncome,
   setRecurringIncome,
   setRecurringIncomePayDay,

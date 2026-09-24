@@ -65,6 +65,7 @@ const EXPENSE_CATEGORIES = {
     '保險', '保費', '壽險', '車險',
     '數位通訊', '訂閱', '月租費', 'apple.com', 'icloud', 'netflix', 'spotify', 'youtube', 'app store',
     '電信', '手機費', '通話費', '門號', '台新電信', 'sim卡',
+    '還款', '貸款', '分期', '本金', '房貸', '車貸', '信貸',
   ],
   '投資': ['投資', '買股', '定期定額', '基金', '買基金'],
 };
@@ -275,6 +276,11 @@ function parse(rawText) {
   m = text.match(/^設定入帳日\s*(\S+?)\s*(\d{1,2})/);
   if (m) {
     return { intent: 'set_income_pay_day', category: m[1], payDay: parseInt(m[2], 10) };
+  }
+
+  m = text.match(/^設定固定預算入帳日\s*(\S+?)\s*(\d{1,2})/);
+  if (m) {
+    return { intent: 'set_recurring_budget_due_day', category: m[1], dueDay: parseInt(m[2], 10) };
   }
 
   m = text.match(/^設定累積\s*(\S+)/);

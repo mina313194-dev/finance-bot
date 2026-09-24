@@ -1,7 +1,7 @@
 // 50/30/20 法則：必要支出 50% / 想要支出 30% / 儲蓄與還債 20%
 
-const NEEDS_CATEGORIES = ['餐飲', '交通', '稅金', '醫療保健', '保險', '電信'];
-const WANTS_CATEGORIES = ['儀容', '人情支出', '訂閱', '教育', '購物', '娛樂', '其他支出'];
+const NEEDS_CATEGORIES = ['餐飲', '交通', '稅金', '醫療保健', '保險', '數位通訊'];
+const WANTS_CATEGORIES = ['儀容', '人情支出', '教育', '購物', '娛樂', '其他支出'];
 // 投資 is money moved into savings/investment, not spending — it's excluded from
 // both buckets so it naturally flows into the "savings" figure below instead.
 const SAVINGS_CATEGORIES = ['投資'];

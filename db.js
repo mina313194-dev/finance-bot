@@ -158,6 +158,15 @@ async function init() {
       due_day INTEGER NOT NULL
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS error_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'error',
+      source TEXT NOT NULL,
+      message TEXT NOT NULL
+    )
+  `);
 }
 
 async function run(sql, args = []) {

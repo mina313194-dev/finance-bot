@@ -252,6 +252,7 @@ async function handleText(ctx) {
       await ctx.reply(result.reply, { reply_markup: mainMenuKeyboard() });
     } catch (err) {
       console.error('Telegram 刪除 error:', err);
+      await logic.logError('刪除指令', err);
       await ctx.reply('刪除時發生錯誤，請稍後再試一次。');
     }
     return;
@@ -277,6 +278,7 @@ async function handleText(ctx) {
       });
     } catch (err) {
       console.error('guided entry record error:', err);
+      await logic.logError('記帳(按鈕流程)', err);
       await ctx.reply(`記帳失敗（這筆沒有存進去，可以重新輸入）：${String(err.message || err).slice(0, 150)}`);
       return;
     }
@@ -339,6 +341,7 @@ async function handleText(ctx) {
       });
     } catch (err) {
       console.error('template fill record error:', err);
+      await logic.logError('記帳(範本)', err);
       await ctx.reply(`記帳失敗（這筆沒有存進去，可以重新輸入）：${String(err.message || err).slice(0, 150)}`);
       return;
     }
@@ -365,6 +368,7 @@ async function handleText(ctx) {
       await ctx.reply(result.reply);
     } catch (err) {
       console.error('Telegram 報表 error:', err);
+      await logic.logError('報表', err);
       await ctx.reply('產生報表時發生錯誤，請稍後再試一次。');
     }
     return;
@@ -381,6 +385,7 @@ async function handleText(ctx) {
     await ctx.reply(result.reply, showMenu ? { reply_markup: mainMenuKeyboard() } : undefined);
   } catch (err) {
     console.error('Telegram handleMessage error:', err);
+    await logic.logError('一般訊息處理', err);
     await ctx.reply('處理時發生錯誤，請稍後再試一次。');
   }
 }
@@ -573,7 +578,10 @@ function init(app) {
   );
   bot.on('message', handleText);
   bot.on('callback_query', handleCallbackQuery);
-  bot.catch((err) => console.error('Telegram bot 錯誤：', err));
+  bot.catch((err) => {
+    console.error('Telegram bot 錯誤：', err);
+    logic.logError('Telegram 處理器', err);
+  });
 
   if (WEBHOOK_BASE_URL) {
     registerExpressWebhook(bot, app, { path: WEBHOOK_PATH, secretToken: WEBHOOK_SECRET });
@@ -581,7 +589,10 @@ function init(app) {
     bot.api
       .setWebhook({ url: fullUrl, secret_token: WEBHOOK_SECRET })
       .then(() => console.log(`Telegram webhook 已設定：${fullUrl}`))
-      .catch((err) => console.error('設定 Telegram webhook 失敗：', err.message));
+      .catch((err) => {
+        console.error('設定 Telegram webhook 失敗：', err.message);
+        logic.logError('設定 webhook', err);
+      });
   } else {
     bot.startPolling().catch((err) => console.error('Telegram polling 錯誤：', err));
     console.log('Telegram 機器人已啟動（polling 模式）。');

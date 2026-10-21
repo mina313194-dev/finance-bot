@@ -209,6 +209,10 @@ function parse(rawText) {
     return { intent: 'help' };
   }
 
+  if (/^(錯誤紀錄|錯誤記錄|系統紀錄|系統記錄)$/.test(text)) {
+    return { intent: 'query_error_log' };
+  }
+
   let m = text.match(/^設定預算\s*(\S+?)\s*(\d+(?:\.\d+)?)/);
   if (m) {
     return { intent: 'set_budget', category: m[1], limit: parseFloat(m[2]) };

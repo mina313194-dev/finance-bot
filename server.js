@@ -58,6 +58,7 @@ app.post('/api/chat', auth.requireAuth, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error(err);
+    logic.logError('網頁聊天 /api/chat', err);
     res.status(500).json({ error: 'internal error' });
   }
 });
@@ -98,6 +99,7 @@ app.post('/api/cron/weekly-report', async (req, res) => {
     res.json({ sent });
   } catch (err) {
     console.error('weekly report error:', err);
+    logic.logError('每週報告排程', err);
     res.status(500).json({ error: 'internal error' });
   }
 });
@@ -112,6 +114,7 @@ app.post('/api/cron/monthly-surplus-reminder', async (req, res) => {
     res.json({ sent });
   } catch (err) {
     console.error('monthly surplus reminder error:', err);
+    logic.logError('每月結餘提醒排程', err);
     res.status(500).json({ error: 'internal error' });
   }
 });
@@ -126,14 +129,27 @@ app.post('/api/cron/payday-transfer-reminder', async (req, res) => {
     res.json({ sent });
   } catch (err) {
     console.error('payday transfer reminder error:', err);
+    logic.logError('發薪日提醒排程', err);
     res.status(500).json({ error: 'internal error' });
   }
 });
 
 const PORT = process.env.PORT || 3000;
 
+process.on('unhandledRejection', (reason) => {
+  console.error('unhandledRejection:', reason);
+  logic.logError('未處理的錯誤(Promise)', reason);
+});
+// still exit after logging: the process may be in an unknown state, and
+// letting Render restart it is safer than limping on
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException:', err);
+  logic.logError('未處理的錯誤(Exception)', err).finally(() => process.exit(1));
+});
+
 (async () => {
   await db.init();
+  await logic.logInfo('服務啟動', '伺服器啟動（部署或休眠後被叫醒）');
   bot.init(app);
   app.listen(PORT, () => {
     console.log(`財務規劃機器人已啟動： http://localhost:${PORT}`);

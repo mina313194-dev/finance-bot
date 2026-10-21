@@ -15,6 +15,65 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+// ---------- error log ----------
+// persisted in the DB (not just console) because Render's free-tier logs are
+// short-lived and only visible in its dashboard. Never throws: logging a
+// failure must not itself become another failure.
+
+const ERROR_LOG_KEEP = 200;
+
+async function logEvent(level, source, err) {
+  try {
+    const message = String((err && err.message) || err || '').slice(0, 500);
+    await db.run(`INSERT INTO error_log (created_at, level, source, message) VALUES (?, ?, ?, ?)`, [
+      nowISO(),
+      level,
+      source,
+      message,
+    ]);
+    await db.run(
+      `DELETE FROM error_log WHERE id <= (SELECT MAX(id) FROM error_log) - ?`,
+      [ERROR_LOG_KEEP]
+    );
+  } catch (logErr) {
+    console.error('failed to write error_log:', logErr);
+  }
+}
+
+function logError(source, err) {
+  return logEvent('error', source, err);
+}
+
+function logInfo(source, message) {
+  return logEvent('info', source, message);
+}
+
+function taipeiTimeLabel(iso) {
+  const parts = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return `${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
+}
+
+async function buildErrorLogText(limit = 10) {
+  const rows = await db.all(`SELECT * FROM error_log ORDER BY id DESC LIMIT ?`, [limit]);
+  if (!rows.length) return '目前沒有任何錯誤紀錄 👍';
+  const lines = ['🛠 最近的系統紀錄（新的在前）：', ''];
+  for (const r of rows) {
+    const icon = r.level === 'error' ? '❌' : '🔄';
+    const msg = r.message.length > 120 ? `${r.message.slice(0, 120)}…` : r.message;
+    lines.push(`${icon} ${taipeiTimeLabel(r.created_at)}　${r.source}`, `　${msg}`);
+  }
+  lines.push('', '❌ 是錯誤；🔄 是服務啟動（Render 休眠後被叫醒也會記一筆，回應慢通常就是這個）');
+  return lines.join('\n');
+}
+
 // ---------- transactions ----------
 
 async function insertTransaction({ date, type, category, amount, note, card }) {
@@ -66,6 +125,7 @@ async function recordTransaction({ date, type, category, amount, note, card, dis
     }
   } catch (err) {
     console.error('recordTransaction post-save step failed:', err);
+    await logError('記帳後預算查詢', err);
     lines.push('', '（紀錄已存好，但預算資訊暫時查不到，不用重新輸入）');
   }
   return lines.join('\n');
@@ -817,6 +877,7 @@ const HELP_TEXT = [
   '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
+  '系統紀錄：「錯誤紀錄」查看最近的錯誤，以及服務啟動（休眠被叫醒）的時間',
   '刪除紀錄：「刪除 9/12 交通 52」（用日期＋類別＋金額比對，找到多筆會列出編號讓你指定），或直接「刪除 #87」用編號刪',
   '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」「轉帳建議」',
 ].join('\n');
@@ -948,6 +1009,9 @@ async function handleMessage(text) {
       await setCardDueDate(intent.card, intent.dueDay);
       return { reply: `已設定「${intent.card}」的繳款日為每月 ${intent.dueDay} 號`, refresh: true };
 
+    case 'query_error_log':
+      return { reply: await buildErrorLogText(), refresh: false };
+
     case 'delete_transaction_by_id': {
       const deleted = await deleteTransactionById(intent.id);
       if (!deleted) return { reply: `找不到編號 #${intent.id} 的紀錄。`, refresh: false };
@@ -1019,6 +1083,9 @@ module.exports = {
   getTransactionById,
   deleteTransactionById,
   findTransactionsMatch,
+  logError,
+  logInfo,
+  buildErrorLogText,
   currentMonthKey,
   fmt,
 };

@@ -20,7 +20,8 @@ function nowISO() {
 // short-lived and only visible in its dashboard. Never throws: logging a
 // failure must not itself become another failure.
 
-const ERROR_LOG_KEEP = 200;
+const ERROR_LOG_KEEP = 100;
+const ERROR_LOG_DAYS = 30;
 
 async function logEvent(level, source, err) {
   try {
@@ -31,10 +32,12 @@ async function logEvent(level, source, err) {
       source,
       message,
     ]);
-    await db.run(
-      `DELETE FROM error_log WHERE id <= (SELECT MAX(id) FROM error_log) - ?`,
-      [ERROR_LOG_KEEP]
-    );
+    // whichever limit is hit first: older than N days, or beyond the newest N rows
+    const cutoff = new Date(Date.now() - ERROR_LOG_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    await db.run(`DELETE FROM error_log WHERE created_at < ?`, [cutoff]);
+    await db.run(`DELETE FROM error_log WHERE id <= (SELECT MAX(id) FROM error_log) - ?`, [
+      ERROR_LOG_KEEP,
+    ]);
   } catch (logErr) {
     console.error('failed to write error_log:', logErr);
   }

@@ -44,22 +44,29 @@ async function recordTransaction({ date, type, category, amount, note, card, dis
   if (card) lines.push(`付款：${card}`);
   if (displayNote) lines.push(`備註：${displayNote}`);
 
-  if (type === 'expense') {
-    const statusList = await getBudgetStatus(monthKeyOf(date));
-    const status = statusList.find((b) => b.category === category);
-    if (status && status.spent > status.limit) {
-      lines.push('', `⚠️ 本月「${category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(status.spent)}`);
-    } else if (status) {
-      lines.push('', `本月「${category}」預算剩餘 ${fmt(status.remaining)}`);
-    }
-  } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(category)) {
-    const applied = await applyIncomeAllocation(amount, monthKeyOf(date));
-    if (applied.length) {
-      lines.push('', '已依分配計畫加進當月預算：');
-      for (const a of applied) {
-        lines.push(`　${a.category} +${fmt(a.share)}（${a.percent}%）`);
+  // the transaction is already saved at this point, so a failure below must not
+  // be reported as a failed entry - that made retries create duplicate records
+  try {
+    if (type === 'expense') {
+      const statusList = await getBudgetStatus(monthKeyOf(date));
+      const status = statusList.find((b) => b.category === category);
+      if (status && status.spent > status.limit) {
+        lines.push('', `⚠️ 本月「${category}」已超出預算 ${fmt(status.limit)}，目前花費 ${fmt(status.spent)}`);
+      } else if (status) {
+        lines.push('', `本月「${category}」預算剩餘 ${fmt(status.remaining)}`);
+      }
+    } else if (ALLOCATION_TRIGGER_CATEGORIES.includes(category)) {
+      const applied = await applyIncomeAllocation(amount, monthKeyOf(date));
+      if (applied.length) {
+        lines.push('', '已依分配計畫加進當月預算：');
+        for (const a of applied) {
+          lines.push(`　${a.category} +${fmt(a.share)}（${a.percent}%）`);
+        }
       }
     }
+  } catch (err) {
+    console.error('recordTransaction post-save step failed:', err);
+    lines.push('', '（紀錄已存好，但預算資訊暫時查不到，不用重新輸入）');
   }
   return lines.join('\n');
 }

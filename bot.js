@@ -264,9 +264,10 @@ async function handleText(ctx) {
       return;
     }
     flowState.delete(chatId);
+    let reply;
     try {
       const cardPart = flow.card ? `${flow.card} ` : '';
-      const reply = await logic.recordTransaction({
+      reply = await logic.recordTransaction({
         date: new Date().toISOString().slice(0, 10),
         type: flow.type,
         category: flow.category,
@@ -274,11 +275,12 @@ async function handleText(ctx) {
         card: flow.card || null,
         note: `${cardPart}${flow.category} ${amount}`,
       });
-      await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     } catch (err) {
       console.error('guided entry record error:', err);
-      await ctx.reply('記帳時發生錯誤，請稍後再試一次。');
+      await ctx.reply(`記帳失敗（這筆沒有存進去，可以重新輸入）：${String(err.message || err).slice(0, 150)}`);
+      return;
     }
+    await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     return;
   }
 
@@ -324,8 +326,9 @@ async function handleText(ctx) {
       type === 'income' ? parser.matchIncomeCategory(fields['類別']) : parser.matchExpenseCategory(fields['類別']);
     const card = parser.KNOWN_CARDS.includes(fields['付款']) ? fields['付款'] : null;
     flowState.delete(chatId);
+    let reply;
     try {
-      const reply = await logic.recordTransaction({
+      reply = await logic.recordTransaction({
         date: mmddToDate(dateStr),
         type,
         category,
@@ -334,11 +337,14 @@ async function handleText(ctx) {
         note: fields['備註'] || `${fields['類別']} ${amount}`,
         displayNote: fields['備註'] || undefined,
       });
-      await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     } catch (err) {
       console.error('template fill record error:', err);
-      await ctx.reply('記帳時發生錯誤，請稍後再試一次。');
+      await ctx.reply(`記帳失敗（這筆沒有存進去，可以重新輸入）：${String(err.message || err).slice(0, 150)}`);
+      return;
     }
+    // sending the confirmation is outside the try above: once recordTransaction
+    // returns the entry is saved, so a send failure must not claim it wasn't
+    await ctx.reply(reply, { reply_markup: mainMenuKeyboard() });
     return;
   }
 

@@ -156,6 +156,105 @@ async function findTransactionsMatch(date, category, amount, type) {
   return db.all(sql, params);
 }
 
+// accepts 9/12, 0912 or 2026-09-12 and returns a real calendar date, or null
+function parseEditDate(token) {
+  let y;
+  let mo;
+  let d;
+  const compact = token.match(/^(\d{2})(\d{2})$/);
+  if (compact) {
+    y = new Date().getFullYear();
+    mo = Number(compact[1]);
+    d = Number(compact[2]);
+  } else {
+    const iso = parser.resolveDateToken(token);
+    if (!iso) return null;
+    [y, mo, d] = iso.split('-').map(Number);
+  }
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+async function editTransaction(id, fields) {
+  const row = await getTransactionById(id);
+  if (!row) return { ok: false, reply: `找不到編號 #${id} 的紀錄。` };
+  if (!Object.keys(fields).length) {
+    return {
+      ok: false,
+      reply: '要改哪個欄位？例如：\n修改 #編號 金額 390\n修改 #編號 日期 0912\n修改 #編號 類別 餐飲\n修改 #編號 付款 永豐\n修改 #編號 備註 午餐\n（可以一次改多個：修改 #編號 金額 390 付款 現金）',
+    };
+  }
+
+  const updates = {};
+  const errors = [];
+
+  if ('金額' in fields) {
+    const n = parseFloat(fields['金額'].replace(/[,，元塊$]/g, ''));
+    if (!Number.isFinite(n) || n <= 0) errors.push('金額要是大於 0 的數字');
+    else updates.amount = n;
+  }
+  if ('日期' in fields) {
+    const d = parseEditDate(fields['日期']);
+    if (!d) errors.push('日期格式不對，請用 9/12、0912 或 2026-09-12');
+    else updates.date = d;
+  }
+  if ('類別' in fields) {
+    const text = fields['類別'];
+    let cat = null;
+    if (text === '其他') cat = row.type === 'income' ? '其他收入' : '其他支出';
+    else {
+      const r = parser.resolveCategory(text);
+      if (r && r.type === row.type) cat = r.category;
+    }
+    if (!cat) errors.push(`類別「${text}」對不上這筆${row.type === 'income' ? '收入' : '支出'}可用的類別`);
+    else updates.category = cat;
+  }
+  if ('付款' in fields) {
+    const text = fields['付款'];
+    if (['無', '清除', '空'].includes(text)) updates.card = null;
+    else if (parser.KNOWN_CARDS.includes(text)) updates.card = text;
+    else errors.push(`付款方式「${text}」不認得，可用：${parser.KNOWN_CARDS.join('／')}（要清空請填「無」）`);
+  }
+  if ('備註' in fields) updates.note = fields['備註'] || null;
+
+  if (errors.length) return { ok: false, reply: `❌ 沒有修改：\n${errors.join('\n')}` };
+
+  const columns = Object.keys(updates);
+  await db.run(`UPDATE transactions SET ${columns.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, [
+    ...columns.map((c) => updates[c]),
+    id,
+  ]);
+
+  const after = { ...row, ...updates };
+  const label = { amount: '金額', date: '日期', category: '類別', card: '付款', note: '備註' };
+  const show = (col, r) => {
+    if (col === 'amount') return `$${Math.round(r.amount).toLocaleString()}`;
+    if (col === 'date') return r.date.replace(/-/g, '/');
+    return r[col] || '（無）';
+  };
+  const lines = [`✏️ 已修改 #${id}`];
+  for (const col of columns) lines.push(`${label[col]}：${show(col, row)} → ${show(col, after)}`);
+  lines.push('', '目前內容：');
+  const emoji = (after.type === 'income' ? parser.INCOME_EMOJI : parser.CATEGORY_EMOJI)[after.category] || '📦';
+  lines.push(
+    `日期：${after.date.replace(/-/g, '/')}`,
+    `類別：${emoji} ${after.category}`,
+    `金額：$${Math.round(after.amount).toLocaleString()}`
+  );
+  if (after.card) lines.push(`付款：${after.card}`);
+  if (after.note) lines.push(`備註：${after.note}`);
+
+  if (
+    row.type === 'income' &&
+    ALLOCATION_TRIGGER_CATEGORIES.includes(row.category) &&
+    (updates.amount || updates.category || updates.date)
+  ) {
+    lines.push('', '⚠️ 這是薪資／獎金類收入，之前已經加進各類別預算的分配金額不會跟著重算。');
+  }
+  return { ok: true, reply: lines.join('\n') };
+}
+
 function formatDeletedTransaction(row) {
   const emoji = (row.type === 'income' ? parser.INCOME_EMOJI : parser.CATEGORY_EMOJI)[row.category] || '📦';
   const lines = [
@@ -880,6 +979,7 @@ const HELP_TEXT = [
   '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
   '設定目標：「設定目標 出國基金 50000 2026-12-31」',
   '存錢到目標：「存 3000 到 出國基金」',
+  '修改紀錄：「修改 #176 金額 390」，可改金額／日期／類別／付款／備註，也能一次改多個（編號在查詢→消費明細裡看）',
   '系統紀錄：「錯誤紀錄」查看最近的錯誤，以及服務啟動（休眠被叫醒）的時間',
   '刪除紀錄：「刪除 9/12 交通 52」（用日期＋類別＋金額比對，找到多筆會列出編號讓你指定），或直接「刪除 #87」用編號刪',
   '查詢：「這個月報告」「預算建議」「目標進度」「分配計畫」「固定預算」「固定收入」「累積類別」「各卡刷卡金額」「轉帳建議」',
@@ -1015,6 +1115,11 @@ async function handleMessage(text) {
     case 'query_error_log':
       return { reply: await buildErrorLogText(), refresh: false };
 
+    case 'edit_transaction': {
+      const result = await editTransaction(intent.id, intent.fields);
+      return { reply: result.reply, refresh: result.ok };
+    }
+
     case 'delete_transaction_by_id': {
       const deleted = await deleteTransactionById(intent.id);
       if (!deleted) return { reply: `找不到編號 #${intent.id} 的紀錄。`, refresh: false };
@@ -1085,6 +1190,7 @@ module.exports = {
   buildPaydayTransferReminderText,
   getTransactionById,
   deleteTransactionById,
+  editTransaction,
   findTransactionsMatch,
   logError,
   logInfo,

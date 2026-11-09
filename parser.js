@@ -201,9 +201,13 @@ function parseTransaction(text) {
   };
 }
 
+// "金額 390 付款 現金": a field name followed by its value, which runs until the next field name
+const EDIT_FIELD_RE = /(金額|日期|類別|付款|備註)\s*[:：]?\s*(.+?)(?=\s+(?:金額|日期|類別|付款|備註)(?:\s|[:：]|$)|$)/g;
+
 function parse(rawText) {
   const text = rawText.trim();
   const lower = text.toLowerCase();
+  let m;
 
   if (/^(說明|幫助|help|指令)$/i.test(text)) {
     return { intent: 'help' };
@@ -213,7 +217,16 @@ function parse(rawText) {
     return { intent: 'query_error_log' };
   }
 
-  let m = text.match(/^設定預算\s*(\S+?)\s*(\d+(?:\.\d+)?)/);
+  // checked this early so free-text fields (e.g. a note mentioning 固定預算)
+  // can't be mistaken for a different command further down
+  m = text.match(/^修改\s*#?(\d+)\s*(.*)$/);
+  if (m) {
+    const fields = {};
+    for (const f of m[2].matchAll(EDIT_FIELD_RE)) fields[f[1]] = f[2].trim();
+    return { intent: 'edit_transaction', id: parseInt(m[1], 10), fields };
+  }
+
+  m = text.match(/^設定預算\s*(\S+?)\s*(\d+(?:\.\d+)?)/);
   if (m) {
     return { intent: 'set_budget', category: m[1], limit: parseFloat(m[2]) };
   }

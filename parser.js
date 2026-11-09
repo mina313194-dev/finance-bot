@@ -273,6 +273,11 @@ function parse(rawText) {
     };
   }
 
+  m = text.match(/^設定(?:薪資)?扣款\s*(\S+?)\s*(\d+(?:\.\d+)?)/);
+  if (m) {
+    return { intent: 'set_income_deduction', category: m[1], amount: parseFloat(m[2]) };
+  }
+
   m = text.match(
     /^設定固定收入\s*(\S+?)\s*(\d+(?:\.\d+)?)\s*(\d{4}-\d{1,2})(?:\s*[至到]?\s*(\d{4}-\d{1,2}))?/
   );

@@ -144,6 +144,9 @@ async function init() {
     if (columns.length && !columns.includes('pay_day')) {
       await client.execute(`ALTER TABLE recurring_income ADD COLUMN pay_day INTEGER NOT NULL DEFAULT 1`);
     }
+    if (columns.length && !columns.includes('deduction_amount')) {
+      await client.execute(`ALTER TABLE recurring_income ADD COLUMN deduction_amount REAL NOT NULL DEFAULT 0`);
+    }
   }
   await client.execute(`
     CREATE TABLE IF NOT EXISTS recurring_income_log (

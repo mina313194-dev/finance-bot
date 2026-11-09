@@ -507,6 +507,18 @@ async function setRecurringIncomePayDay(category, payDay) {
   await db.run(`UPDATE recurring_income SET pay_day = ? WHERE category = ?`, [payDay, category]);
 }
 
+// salary deduction (勞健保等): `amount` is the gross pay, `deduction_amount` the
+// payroll deduction. Each month records two rows — income 薪資 (gross) and an
+// expense 義務支出「勞健保」(deduction) — while the allocation plan is based on the
+// net pay (what actually lands in the account), plus the deduction is added to
+// the 義務支出 budget so the expense row doesn't eat into that category's plan.
+async function setRecurringIncomeDeduction(category, deduction) {
+  await db.run(`UPDATE recurring_income SET deduction_amount = ? WHERE category = ?`, [
+    deduction,
+    category,
+  ]);
+}
+
 async function ensureRecurringIncomeApplied(monthKey) {
   const rules = await db.all(
     `SELECT * FROM recurring_income WHERE start_month <= ? AND (end_month IS NULL OR end_month >= ?)`,
@@ -525,8 +537,25 @@ async function ensureRecurringIncomeApplied(monthKey) {
       amount: r.amount,
       note: '固定薪資自動入帳',
     });
+    const deduction = Number(r.deduction_amount) || 0;
+    if (deduction > 0) {
+      await insertTransaction({
+        date: `${monthKey}-${String(r.pay_day || 1).padStart(2, '0')}`,
+        type: 'expense',
+        category: '義務支出',
+        amount: deduction,
+        note: '勞健保（薪資扣款自動入帳）',
+      });
+    }
     if (ALLOCATION_TRIGGER_CATEGORIES.includes(r.category)) {
-      await applyIncomeAllocation(r.amount, monthKey);
+      await applyIncomeAllocation(r.amount - deduction, monthKey);
+      if (deduction > 0) {
+        await db.run(
+          `INSERT INTO budgets (category, month, monthly_limit) VALUES ('義務支出', ?, ?)
+           ON CONFLICT(category, month) DO UPDATE SET monthly_limit = monthly_limit + excluded.monthly_limit`,
+          [monthKey, deduction]
+        );
+      }
     }
     await db.run(`INSERT INTO recurring_income_log (rule_id, month) VALUES (?, ?)`, [
       r.id,
@@ -899,9 +928,13 @@ async function buildRecurringIncomeText() {
   }
   const lines = ['目前的固定收入排程：'];
   for (const r of rules) {
-    lines.push(`　${r.category}：${fmt(r.amount)}/月，${r.start_month} 起${
+    const ded = Number(r.deduction_amount) || 0;
+    lines.push(`　${r.category}：${fmt(r.amount)}/月（每月 ${r.pay_day || 1} 號），${r.start_month} 起${
       r.end_month ? `到 ${r.end_month} 止` : '（無結束日期）'
     }`);
+    if (ded > 0) {
+      lines.push(`　　扣勞健保 ${fmt(ded)}（另記一筆義務支出），實領 ${fmt(r.amount - ded)}，預算按實領分配`);
+    }
   }
   return lines.join('\n');
 }
@@ -974,6 +1007,7 @@ const HELP_TEXT = [
   '設定固定預算：「設定固定預算 保險 2537 2026-03 2027-02」（不用等收入，每月自動套用，預設每月1號入帳）',
   '設定固定預算入帳日：「設定固定預算入帳日 義務支出 19」（改成每月固定日期入帳，例如還款日）',
   '設定固定收入：「設定固定收入 薪資 45000 2026-09」（每月自動入帳，薪資/獎金/年終會自動觸發分配）',
+  '設定扣款：「設定扣款 薪資 3275」（固定薪資同時記一筆義務支出勞健保，預算按實領分配；填 0 取消）',
   '設定累積類別：「設定累積 稅金」（這個類別沒花完的預算會留到下個月，不會歸零）',
   '取消累積：「取消累積 稅金」',
   '設定卡片繳款日：「設定繳款日 玉山 13」，各卡刷卡金額查詢會顯示還有幾天要繳',
@@ -1029,6 +1063,18 @@ async function handleMessage(text) {
         }`,
         refresh: true,
       };
+
+    case 'set_income_deduction': {
+      const exists = (await getRecurringIncome()).some((r) => r.category === intent.category);
+      if (!exists) return { reply: `找不到「${intent.category}」的固定收入，請先用「設定固定收入」建立`, refresh: false };
+      await setRecurringIncomeDeduction(intent.category, intent.amount);
+      return {
+        reply: intent.amount > 0
+          ? `已設定「${intent.category}」每月扣款 ${fmt(intent.amount)}（勞健保）。從還沒入帳的月份開始，會同時記一筆收入（總額）和一筆義務支出，預算按實領分配`
+          : `已取消「${intent.category}」的每月扣款`,
+        refresh: true,
+      };
+    }
 
     case 'query_recurring_income':
       return { reply: await buildRecurringIncomeText(), refresh: false };

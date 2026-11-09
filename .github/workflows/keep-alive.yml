@@ -1,0 +1,19 @@
+name: Keep server awake
+
+# Render's free tier sleeps after ~15 minutes without traffic, and the first
+# Telegram message after that gets a 429 / no reply while it wakes up. A light
+# ping every 10 minutes keeps it awake (the repo is public, so Actions are free).
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping server
+        run: |
+          curl -sS --max-time 90 --retry 2 --retry-delay 5 -o /dev/null \
+            -w "HTTP %{http_code} in %{time_total}s\n" \
+            "https://finance-bot-s4a5.onrender.com/api/config" || true

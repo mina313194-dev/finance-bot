@@ -146,8 +146,12 @@ async function deleteTransactionById(id) {
 }
 
 async function findTransactionsMatch(date, category, amount, type) {
-  const params = [date, category, amount];
-  let sql = `SELECT * FROM transactions WHERE date = ? AND category = ? AND amount = ?`;
+  const params = [date, amount];
+  let sql = `SELECT * FROM transactions WHERE date = ? AND amount = ?`;
+  if (category) {
+    sql += ` AND category = ?`;
+    params.push(category);
+  }
   if (type) {
     sql += ` AND type = ?`;
     params.push(type);
@@ -1172,6 +1176,13 @@ async function handleMessage(text) {
       return { reply: formatDeletedTransaction(deleted), refresh: true };
     }
 
+    case 'delete_usage':
+      return {
+        reply:
+          '刪除的寫法（任選一種）：\n　刪除 #編號　例：刪除 #181\n　刪除 日期 金額　例：刪除 1109 340\n　刪除 日期 類別 金額　例：刪除 11/9 餐飲 340\n日期可以寫 11/9、1109 或 2026-11-09。編號可在「查詢 → 消費明細」看到。',
+        refresh: false,
+      };
+
     case 'delete_transaction': {
       if (!intent.date) {
         return {
@@ -1182,7 +1193,7 @@ async function handleMessage(text) {
       const matches = await findTransactionsMatch(intent.date, intent.category, intent.amount, intent.type);
       if (!matches.length) {
         return {
-          reply: `找不到符合的紀錄：${intent.date.replace(/-/g, '/')} ${intent.category} ${fmt(intent.amount)}`,
+          reply: `找不到符合的紀錄：${intent.date.replace(/-/g, '/')} ${intent.category || ''} ${fmt(intent.amount)}\n可以到「查詢 → 消費明細」找編號，再用「刪除 #編號」。`,
           refresh: false,
         };
       }

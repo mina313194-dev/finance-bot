@@ -349,6 +349,48 @@ function parse(rawText) {
     };
   }
 
+  // forgiving form: 刪除 1109 340 / 刪除1109金額340 / 刪除 11月9日 餐飲 340 ...
+  // needs a date and an amount; the category is optional
+  if (/^刪除\s*$/.test(text)) return { intent: 'delete_usage' };
+  m = text.match(/^刪除\s*(.+)$/);
+  if (m) {
+    const rest = m[1]
+      .replace(/(\d{1,2})月(\d{1,2})[日號号]?/g, '$1/$2')
+      .replace(/[：:，,、]/g, ' ')
+      .replace(/金額|日期|類別|付款|備註|元|\$|NT/gi, ' ');
+    const tokens = rest.split(/\s+/).filter(Boolean);
+    let date = null;
+    let dateIdx = -1;
+    tokens.forEach((t, i) => {
+      if (date) return;
+      const iso = resolveDateToken(t);
+      if (iso) {
+        date = iso;
+        dateIdx = i;
+        return;
+      }
+      const c = t.match(/^(\d{2})(\d{2})$/);
+      if (c && +c[1] >= 1 && +c[1] <= 12 && +c[2] >= 1 && +c[2] <= 31) {
+        date = resolveDateToken(`${+c[1]}/${+c[2]}`);
+        dateIdx = i;
+      }
+    });
+    const others = tokens.filter((_, i) => i !== dateIdx);
+    const amountTok = others.find((t) => /^\d+(?:\.\d+)?$/.test(t));
+    const catTok = others.find((t) => !/^\d+(?:\.\d+)?$/.test(t));
+    if (date && amountTok) {
+      const resolved = catTok ? resolveCategory(catTok) : null;
+      return {
+        intent: 'delete_transaction',
+        date,
+        type: resolved ? resolved.type : null,
+        category: catTok ? (resolved ? resolved.category : catTok) : null,
+        amount: parseFloat(amountTok),
+      };
+    }
+    return { intent: 'delete_usage' };
+  }
+
   m = text.match(/^設定繳款日\s*(\S+?)\s*(\d{1,2})/);
   if (m) {
     return { intent: 'set_card_due_date', card: m[1], dueDay: parseInt(m[2], 10) };
